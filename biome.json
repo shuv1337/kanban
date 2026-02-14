@@ -1,0 +1,38 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.3.5/schema.json",
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab",
+		"indentWidth": 3,
+		"lineWidth": 120
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"style": {
+				"useConst": "error"
+			},
+			"suspicious": {
+				"noExplicitAny": "off"
+			}
+		}
+	},
+	"files": {
+		"includes": [
+			"src/**/*.ts",
+			"test/**/*.ts",
+			"vitest.config.ts",
+			"!dist/**/*",
+			"!node_modules/**/*",
+			"!!**/node_modules"
+		]
+	},
+	"plugins": ["grit/no-process-env-destructure.grit"],
+	"overrides": [
+		{
+			"includes": ["src/**/*.ts", "!!src/cli.ts"],
+			"plugins": ["grit/no-console.grit", "grit/no-process-exit.grit"]
+		}
+	]
+}

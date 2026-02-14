@@ -1,12 +1,64 @@
 {
   "name": "kanbanana",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "version": "0.1.0",
+  "description": "A kanban foundation for coding agents",
+  "keywords": [
+    "kanban",
+    "agents",
+    "cli",
+    "task-management",
+    "typescript"
+  ],
+  "homepage": "https://github.com/cline/kanbanana",
+  "bugs": {
+    "url": "https://github.com/cline/kanbanana/issues"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC"
+  "author": "Cline",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cline/kanbanana.git"
+  },
+  "type": "module",
+  "bin": {
+    "kanbanana": "dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "clean": "shx rm -rf dist coverage",
+    "build": "npm run clean && tsc -p tsconfig.build.json && shx chmod +x dist/cli.js",
+    "dev": "tsx watch src/cli.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "check": "npm run lint && npm run typecheck && npm run test",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepare": "husky",
+    "prepublishOnly": "npm run build && npm run check"
+  },
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.5",
+    "@types/node": "^22.10.5",
+    "husky": "^9.1.7",
+    "shx": "^0.4.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
 }
