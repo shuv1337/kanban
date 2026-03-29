@@ -10,6 +10,13 @@ import type { RuntimeHookEvent, RuntimeTaskHookActivity } from "../core/api-cont
 import { buildKanbanCommandParts } from "../core/kanban-command.js";
 import { buildKanbanRuntimeUrl } from "../core/runtime-endpoint.js";
 import { parseHookRuntimeContextFromEnv } from "../terminal/hook-runtime-context.js";
+import {
+	logPiHookNotifyAttempted,
+	logPiHookNotifyFailed,
+	logPiHookNotifySucceeded,
+	logPiReviewTransitioned,
+} from "../telemetry/hook-telemetry.js";
+import { writeStructuredRuntimeLog } from "../telemetry/runtime-log.js";
 import type { RuntimeAppRouter } from "../trpc/app-router.js";
 
 const VALID_EVENTS = new Set<RuntimeHookEvent>(["to_review", "to_in_progress", "activity"]);
@@ -30,6 +37,7 @@ interface HookCommandMetadataOptionValues {
 	source?: string;
 	activityText?: string;
 	toolName?: string;
+	toolInputSummary?: string;
 	finalMessage?: string;
 	hookEventName?: string;
 	notificationType?: string;
@@ -173,12 +181,16 @@ function parseMetadataFromOptions(options: HookCommandMetadataOptionValues): Par
 	const hookEventName = options.hookEventName;
 	const notificationType = options.notificationType;
 	const source = options.source;
+	const toolInputSummary = options.toolInputSummary;
 
 	if (activityText) {
 		metadata.activityText = truncateText(normalizeWhitespace(activityText), MAX_ACTIVITY_TEXT_LENGTH);
 	}
 	if (toolName) {
 		metadata.toolName = truncateText(normalizeWhitespace(toolName), 120);
+	}
+	if (toolInputSummary) {
+		metadata.toolInputSummary = truncateText(normalizeWhitespace(toolInputSummary), 200);
 	}
 	if (finalMessage) {
 		metadata.finalMessage = truncateText(normalizeWhitespace(finalMessage), MAX_FINAL_MESSAGE_LENGTH);
@@ -268,7 +280,13 @@ function inferActivityText(
 	const codexType = payload ? readStringField(payload, "type") : null;
 	const normalizedCodexType = codexType?.toLowerCase() ?? "";
 	const toolInput = payload ? extractToolInput(payload) : null;
-	const toolOperation = describeToolOperation(toolName, toolInput);
+	const directToolInputSummary = payload
+		? (readStringField(payload, "tool_input_summary") ?? readStringField(payload, "toolInputSummary"))
+		: null;
+	const toolOperation =
+		directToolInputSummary && toolName
+			? `${toolName}: ${truncateText(directToolInputSummary, 120)}`
+			: describeToolOperation(toolName, toolInput);
 
 	if (normalizedCodexType === "task_started") {
 		return "Working on task";
@@ -330,6 +348,10 @@ function inferActivityText(
 }
 
 export function inferHookSourceFromPayload(payload: Record<string, unknown> | null): string | null {
+	const explicitSource = payload ? readStringField(payload, "source") : null;
+	if (explicitSource === "pi") {
+		return "pi";
+	}
 	const transcriptPath = payload ? readStringField(payload, "transcript_path") : null;
 	const normalizedTranscriptPath = transcriptPath?.replaceAll("\\", "/").toLowerCase() ?? null;
 	if (normalizedTranscriptPath?.includes("/.claude/")) {
@@ -373,6 +395,9 @@ function normalizeHookMetadata(
 			readNestedString(payload, ["taskComplete", "taskMetadata", "result"]) ??
 			readNestedString(payload, ["taskComplete", "result"]))
 		: null;
+	const toolInputSummary = payload
+		? (readStringField(payload, "tool_input_summary") ?? readStringField(payload, "toolInputSummary"))
+		: null;
 
 	const inferredSource = inferHookSourceFromPayload(payload);
 
@@ -381,6 +406,9 @@ function normalizeHookMetadata(
 		source: flagMetadata.source ?? inferredSource ?? null,
 		hookEventName: flagMetadata.hookEventName ?? hookEventName ?? null,
 		toolName: flagMetadata.toolName ?? toolName ?? null,
+		toolInputSummary:
+			flagMetadata.toolInputSummary ??
+			(toolInputSummary ? truncateText(normalizeWhitespace(toolInputSummary), 200) : null),
 		notificationType: flagMetadata.notificationType ?? notificationType ?? null,
 		finalMessage:
 			flagMetadata.finalMessage ??
@@ -403,6 +431,9 @@ function normalizeHookMetadata(
 	}
 	if (typeof merged.toolName === "string") {
 		merged.toolName = truncateText(merged.toolName, 120);
+	}
+	if (typeof merged.toolInputSummary === "string") {
+		merged.toolInputSummary = truncateText(merged.toolInputSummary, 200);
 	}
 	if (typeof merged.notificationType === "string") {
 		merged.notificationType = truncateText(merged.notificationType, 120);
@@ -482,6 +513,9 @@ function appendMetadataFlags(args: string[], metadata?: Partial<RuntimeTaskHookA
 	}
 	if (metadata.toolName) {
 		args.push("--tool-name", metadata.toolName);
+	}
+	if (metadata.toolInputSummary) {
+		args.push("--tool-input-summary", metadata.toolInputSummary);
 	}
 	if (metadata.finalMessage) {
 		args.push("--final-message", metadata.finalMessage);
@@ -902,11 +936,94 @@ async function runHooksNotify(
 	options: HookCommandMetadataOptionValues,
 	payloadArg: string | undefined,
 ): Promise<void> {
+	const startTime = Date.now();
+	let context: { taskId: string; workspaceId: string } | null = null;
+
+	// Parse context early for telemetry
+	try {
+		context = parseHookRuntimeContextFromEnv();
+	} catch {
+		// Context missing - telemetry will be limited
+	}
+
+	const metadata = parseMetadataFromOptions(options);
+
+	// Log attempt for pi source
+	if (options.source === "pi" && context) {
+		await logPiHookNotifyAttempted(
+			{
+				taskId: context.taskId,
+				workspaceId: context.workspaceId,
+				hookEvent: event,
+				hookEventName: metadata.hookEventName,
+				toolName: metadata.toolName,
+				toolInputSummary: metadata.toolInputSummary,
+			},
+			{ source: options.source },
+		);
+	}
+
 	try {
 		const stdinPayload = await readStdinText();
 		const args = parseHooksIngestArgs(event, options, payloadArg, stdinPayload);
 		await ingestHookEvent(args);
-	} catch {
+
+		const durationMs = Date.now() - startTime;
+
+		// Log success for pi source
+		if (options.source === "pi" && context) {
+			await logPiHookNotifySucceeded(
+				{
+					taskId: context.taskId,
+					workspaceId: context.workspaceId,
+					hookEvent: event,
+					hookEventName: metadata.hookEventName,
+				},
+				durationMs,
+			);
+
+			// Log review transition specifically
+			if (event === "to_review") {
+				await logPiReviewTransitioned(
+					{
+						taskId: context.taskId,
+						workspaceId: context.workspaceId,
+						hookEventName: metadata.hookEventName ?? "agent_end",
+					},
+					{ finalMessage: metadata.finalMessage },
+				);
+			}
+		}
+	} catch (error) {
+		const durationMs = Date.now() - startTime;
+
+		if (options.source === "pi") {
+			if (context) {
+				await logPiHookNotifyFailed(
+					{
+						taskId: context.taskId,
+						workspaceId: context.workspaceId,
+						hookEvent: event,
+						hookEventName: metadata.hookEventName,
+						toolName: metadata.toolName,
+						toolInputSummary: metadata.toolInputSummary,
+					},
+					error,
+					durationMs,
+				);
+			} else {
+				// Fallback to stderr logging when context is unavailable
+				const message = error instanceof Error ? error.message : String(error);
+				writeStructuredRuntimeLog({
+					event: "pi_hook_notify_failed",
+					hookEvent: event,
+					errorClass: error instanceof Error ? error.name : "Error",
+					errorMessage: message,
+					durationMs,
+					hasContext: false,
+				});
+			}
+		}
 		// Best effort only.
 	}
 }
@@ -1103,6 +1220,7 @@ export function registerHooksCommand(program: Command): void {
 		.option("--source <source>", "Hook source.")
 		.option("--activity-text <text>", "Activity summary text.")
 		.option("--tool-name <name>", "Tool name.")
+		.option("--tool-input-summary <summary>", "Tool input summary.")
 		.option("--final-message <message>", "Final message.")
 		.option("--hook-event-name <name>", "Original hook event name.")
 		.option("--notification-type <type>", "Notification type.")
@@ -1123,6 +1241,7 @@ export function registerHooksCommand(program: Command): void {
 		.option("--source <source>", "Hook source.")
 		.option("--activity-text <text>", "Activity summary text.")
 		.option("--tool-name <name>", "Tool name.")
+		.option("--tool-input-summary <summary>", "Tool input summary.")
 		.option("--final-message <message>", "Final message.")
 		.option("--hook-event-name <name>", "Original hook event name.")
 		.option("--notification-type <type>", "Notification type.")

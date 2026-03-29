@@ -1,5 +1,9 @@
+import { getKanbanRuntimeHost, getKanbanRuntimePort } from "../core/runtime-endpoint.js";
+
 export const KANBAN_HOOK_TASK_ID_ENV = "KANBAN_HOOK_TASK_ID";
 export const KANBAN_HOOK_WORKSPACE_ID_ENV = "KANBAN_HOOK_WORKSPACE_ID";
+export const KANBAN_RUNTIME_PORT_ENV = "KANBAN_RUNTIME_PORT";
+export const KANBAN_RUNTIME_HOST_ENV = "KANBAN_RUNTIME_HOST";
 
 export interface HookRuntimeContext {
 	taskId: string;
@@ -18,6 +22,8 @@ export function createHookRuntimeEnv(context: HookRuntimeContext): Record<string
 	return {
 		[KANBAN_HOOK_TASK_ID_ENV]: context.taskId,
 		[KANBAN_HOOK_WORKSPACE_ID_ENV]: context.workspaceId,
+		[KANBAN_RUNTIME_PORT_ENV]: String(getKanbanRuntimePort()),
+		[KANBAN_RUNTIME_HOST_ENV]: getKanbanRuntimeHost(),
 	};
 }
 

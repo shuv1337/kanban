@@ -8,6 +8,8 @@ import { quoteShellArg } from "../core/shell.js";
 import { lockedFileSystem } from "../fs/locked-file-system.js";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt.js";
 import { getRuntimeHomePath } from "../state/workspace-state.js";
+import { writeStructuredRuntimeLog } from "../telemetry/runtime-log.js";
+import { buildPiTaskSessionDir } from "./pi-session-paths.js";
 import { createHookRuntimeEnv } from "./hook-runtime-context.js";
 import {
 	getOpenCodeAuthPathCandidates,
@@ -101,6 +103,14 @@ function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadat
 
 function buildHooksCommandParts(args: string[]): string[] {
 	return buildKanbanCommandParts(["hooks", ...args]);
+}
+
+function buildHookNotifyCommandParts(event: RuntimeHookEvent, source?: string): string[] {
+	const parts = buildHooksCommandParts(["notify", "--event", event]);
+	if (source) {
+		parts.push("--source", source);
+	}
+	return parts;
 }
 
 function buildHooksCommand(args: string[]): string {
@@ -599,6 +609,221 @@ function withPrompt(args: string[], prompt: string, mode: "append" | "flag", fla
 		args,
 		env: {},
 	};
+}
+
+function prependPiPlanInstruction(prompt: string): string {
+	const trimmed = prompt.trim();
+	if (!trimmed) {
+		return "Please create a plan for this task before implementing. Do not make changes yet.";
+	}
+	return `Please create a plan for this task before implementing. Do not make changes yet.\n${trimmed}`;
+}
+
+function buildPiExtensionContent(extensionPath: string): string {
+	const toInProgressCommandParts = buildHookNotifyCommandParts("to_in_progress", "pi");
+	const activityCommandParts = buildHookNotifyCommandParts("activity", "pi");
+	const toReviewCommandParts = buildHookNotifyCommandParts("to_review", "pi");
+	const extensionPathLiteral = JSON.stringify(extensionPath);
+	const toInProgressLiteral = JSON.stringify(toInProgressCommandParts);
+	const activityLiteral = JSON.stringify(activityCommandParts);
+	const toReviewLiteral = JSON.stringify(toReviewCommandParts);
+	return `import { execFile } from "node:child_process";
+import { appendFile, mkdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { promisify } from "node:util";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
+const execFileAsync = promisify(execFile);
+const extensionPath = ${extensionPathLiteral};
+const source = "pi";
+const toInProgressCommandParts = ${toInProgressLiteral};
+const activityCommandParts = ${activityLiteral};
+const toReviewCommandParts = ${toReviewLiteral};
+
+interface HookLogEntry {
+	ts: string;
+	event: string;
+	taskId: string;
+	workspaceId: string;
+	hookEvent?: string;
+	hookEventName?: string;
+	toolName?: string;
+	toolInputSummary?: string;
+	durationMs?: number;
+	exitCode?: number | null;
+	errorClass?: string | null;
+	errorMessage?: string | null;
+	metadata?: Record<string, unknown>;
+}
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\\s+/g, " ").trim();
+}
+
+function summarizeToolInput(args: unknown): string | null {
+  if (!args || typeof args !== "object" || Array.isArray(args)) {
+    return null;
+  }
+  const record = args as Record<string, unknown>;
+  for (const key of ["path", "filePath", "command", "query", "description", "url", "branch", "name"]) {
+    const value = record[key];
+    if (typeof value === "string") {
+      const normalized = normalizeWhitespace(value);
+      if (normalized.length > 0) {
+        return normalized.slice(0, 200);
+      }
+    }
+  }
+  const firstEntry = Object.entries(record).find(([, value]) => typeof value === "string" && normalizeWhitespace(value).length > 0);
+  if (!firstEntry) {
+    return null;
+  }
+  const [, value] = firstEntry;
+  return typeof value === "string" ? normalizeWhitespace(value).slice(0, 200) : null;
+}
+
+function getRuntimeHomePath(): string {
+	const home = process.env.CLINE_HOME || process.env.HOME || process.env.USERPROFILE || "/tmp";
+	return join(home, ".cline", "kanban");
+}
+
+function getPiHookLogFilePath(workspaceId: string, taskId: string): string {
+	return join(getRuntimeHomePath(), "hooks", "pi", "logs", workspaceId, \`\${taskId}.jsonl\`);
+}
+
+async function writeHookLogEntry(entry: HookLogEntry): Promise<void> {
+	const logPath = getPiHookLogFilePath(entry.workspaceId, entry.taskId);
+	const line = JSON.stringify(entry) + "\\n";
+	try {
+		await mkdir(dirname(logPath), { recursive: true });
+		await appendFile(logPath, line);
+	} catch {
+		// Silent: telemetry failures must not block hooks
+	}
+}
+
+async function notify(
+	parts: string[],
+	metadata: Record<string, unknown>,
+	hookEventName: string,
+	toolName?: string,
+	toolInputSummary?: string | null,
+): Promise<void> {
+	const taskId = process.env.KANBAN_HOOK_TASK_ID?.trim();
+	const workspaceId = process.env.KANBAN_HOOK_WORKSPACE_ID?.trim();
+	if (!taskId || !workspaceId) {
+		return;
+	}
+
+	const startTime = Date.now();
+	const commandParts = [...parts.slice(1), "--metadata-base64", Buffer.from(JSON.stringify(metadata), "utf8").toString("base64")];
+
+	// Log attempt
+	await writeHookLogEntry({
+		ts: new Date().toISOString(),
+		event: "pi_hook_notify_attempted",
+		taskId,
+		workspaceId,
+		hookEvent: parts.includes("to_review") ? "to_review" : parts.includes("to_in_progress") ? "to_in_progress" : "activity",
+		hookEventName,
+		toolName,
+		toolInputSummary: toolInputSummary ?? undefined,
+		commandParts,
+		cwd: process.cwd(),
+		metadata,
+	});
+
+	try {
+		const { stdout, stderr } = await execFileAsync(parts[0]!, commandParts, {
+			env: process.env,
+			cwd: process.cwd(),
+			windowsHide: true,
+			timeout: 5000,
+		});
+		const durationMs = Date.now() - startTime;
+
+		// Log success
+		await writeHookLogEntry({
+			ts: new Date().toISOString(),
+			event: "pi_hook_notify_succeeded",
+			taskId,
+			workspaceId,
+			hookEvent: parts.includes("to_review") ? "to_review" : parts.includes("to_in_progress") ? "to_in_progress" : "activity",
+			hookEventName,
+			toolName,
+			toolInputSummary: toolInputSummary ?? undefined,
+			durationMs,
+			exitCode: 0,
+			metadata: { stdout: stdout?.slice(0, 500), stderr: stderr?.slice(0, 500) },
+		});
+	} catch (err) {
+		const durationMs = Date.now() - startTime;
+		const error = err instanceof Error ? err : new Error(String(err));
+
+		// Log failure with full context
+		await writeHookLogEntry({
+			ts: new Date().toISOString(),
+			event: "pi_hook_notify_failed",
+			taskId,
+			workspaceId,
+			hookEvent: parts.includes("to_review") ? "to_review" : parts.includes("to_in_progress") ? "to_in_progress" : "activity",
+			hookEventName,
+			toolName,
+			toolInputSummary: toolInputSummary ?? undefined,
+			commandParts,
+			cwd: process.cwd(),
+			durationMs,
+			exitCode: (err as { code?: number })?.code ?? null,
+			errorClass: error.name,
+			errorMessage: error.message.slice(0, 500),
+			metadata: {
+				kanbanRuntimePort: process.env.KANBAN_RUNTIME_PORT,
+				kanbanRuntimeHost: process.env.KANBAN_RUNTIME_HOST,
+			},
+		});
+	}
+}
+
+export default function (pi: ExtensionAPI) {
+  pi.on("agent_start", async () => {
+    await notify(toInProgressCommandParts, {
+      source,
+      hook_event_name: "agent_start",
+      extension_path: extensionPath,
+    }, "agent_start");
+  });
+
+  pi.on("tool_execution_start", async (event) => {
+    const toolInputSummary = summarizeToolInput(event.args);
+    await notify(activityCommandParts, {
+      source,
+      hook_event_name: "tool_execution_start",
+      tool_name: event.toolName,
+      tool_input_summary: toolInputSummary,
+      extension_path: extensionPath,
+    }, "tool_execution_start", event.toolName, toolInputSummary);
+  });
+
+  pi.on("tool_execution_end", async (event) => {
+    const toolInputSummary = summarizeToolInput(event.args);
+    await notify(activityCommandParts, {
+      source,
+      hook_event_name: "tool_execution_end",
+      tool_name: event.toolName,
+      tool_input_summary: toolInputSummary,
+      extension_path: extensionPath,
+    }, "tool_execution_end", event.toolName, toolInputSummary);
+  });
+
+  pi.on("agent_end", async () => {
+    await notify(toReviewCommandParts, {
+      source,
+      hook_event_name: "agent_end",
+      extension_path: extensionPath,
+    }, "agent_end");
+  });
+}
+`;
 }
 
 const claudeAdapter: AgentSessionAdapter = {
@@ -1301,6 +1526,109 @@ const clineAdapter: AgentSessionAdapter = {
 	},
 };
 
+const piAdapter: AgentSessionAdapter = {
+	async prepare(input) {
+		const args = [...input.args];
+		const env: Record<string, string | undefined> = {};
+		const hooks = resolveHookContext(input);
+		let prompt = input.prompt;
+
+		if (hooks) {
+			const extensionPath = join(getHookAgentDirectory("pi"), "kanban-extension.ts");
+			const extensionContent = buildPiExtensionContent(extensionPath);
+			await ensureTextFile(extensionPath, extensionContent);
+			if (!hasCliOption(args, "-e") && !hasCliOption(args, "--extension")) {
+				args.push("-e", extensionPath);
+			}
+			Object.assign(
+				env,
+				createHookRuntimeEnv({
+					taskId: hooks.taskId,
+					workspaceId: hooks.workspaceId,
+				}),
+			);
+			writeStructuredRuntimeLog({
+				event: "pi_extension_generated",
+				agentId: input.agentId,
+				workspaceId: input.workspaceId ?? null,
+				taskId: input.taskId,
+				homeSession: resolveHomeAgentAppendSystemPrompt(input.taskId) !== null,
+				extensionPath,
+				errorClass: null,
+				errorMessage: null,
+			});
+		}
+
+		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
+		const isHomeSession = appendedSystemPrompt !== null;
+		let sessionDir: string | null = null;
+		if (isHomeSession) {
+			if (appendedSystemPrompt && !hasCliOption(args, "--append-system-prompt")) {
+				args.push("--append-system-prompt", appendedSystemPrompt);
+			}
+			if (!hasCliOption(args, "--no-session")) {
+				args.push("--no-session");
+			}
+			writeStructuredRuntimeLog({
+				event: "pi_home_session_started",
+				agentId: input.agentId,
+				workspaceId: input.workspaceId ?? null,
+				taskId: input.taskId,
+				homeSession: true,
+				sessionDir: null,
+			});
+		} else if (hooks) {
+			sessionDir = buildPiTaskSessionDir(hooks.workspaceId, hooks.taskId);
+			if (!hasCliOption(args, "--session-dir")) {
+				args.push("--session-dir", sessionDir);
+			}
+			if (input.resumeFromTrash && !hasCliOption(args, "-c") && !hasCliOption(args, "--continue")) {
+				args.push("--continue");
+				writeStructuredRuntimeLog({
+					event: "pi_resume_requested",
+					agentId: input.agentId,
+					workspaceId: input.workspaceId ?? null,
+					taskId: input.taskId,
+					homeSession: false,
+					sessionDir,
+					resumeFromTrash: true,
+				});
+			}
+			writeStructuredRuntimeLog({
+				event: "pi_task_session_started",
+				agentId: input.agentId,
+				workspaceId: input.workspaceId ?? null,
+				taskId: input.taskId,
+				homeSession: false,
+				sessionDir,
+				resumeFromTrash: input.resumeFromTrash === true,
+			});
+		}
+
+		if (input.startInPlanMode) {
+			prompt = prependPiPlanInstruction(prompt);
+		}
+
+		const withPromptLaunch = withPrompt(args, prompt, "append");
+		writeStructuredRuntimeLog({
+			event: "pi_launch_prepared",
+			agentId: input.agentId,
+			workspaceId: input.workspaceId ?? null,
+			taskId: input.taskId,
+			homeSession: isHomeSession,
+			sessionDir,
+			resumeFromTrash: input.resumeFromTrash === true,
+		});
+		return {
+			...withPromptLaunch,
+			env: {
+				...withPromptLaunch.env,
+				...env,
+			},
+		};
+	},
+};
+
 const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	claude: claudeAdapter,
 	codex: codexAdapter,
@@ -1308,6 +1636,7 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	opencode: opencodeAdapter,
 	droid: droidAdapter,
 	cline: clineAdapter,
+	pi: piAdapter,
 };
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {
