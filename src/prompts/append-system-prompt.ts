@@ -31,6 +31,7 @@ const APPEND_PROMPT_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"droid",
 	"gemini",
 	"opencode",
+	"pi",
 ];
 
 function isRuntimeAgentId(value: string): value is RuntimeAgentId {
@@ -63,6 +64,8 @@ function renderLinearSetupGuidanceForAgent(agentId: RuntimeAgentId | null): stri
 			return "- If Linear MCP is not available in the current agent (OpenCode), run `opencode mcp add`, then use name `linear` and URL `https://mcp.linear.app/mcp`.";
 		case "droid":
 			return "- If Linear MCP is not available in the current agent (Droid), run: `droid mcp add linear https://mcp.linear.app/mcp --type http`";
+		case "pi":
+			return "- If Linear MCP is not available in the current agent (pi), use the Kanban CLI, `gh`, and other installed tools directly unless your pi setup provides equivalent integrations. pi does not include built-in MCP support by default.";
 		default:
 			return "- If Linear MCP is not available, provide setup instructions for the active agent only, then continue once OAuth is complete.";
 	}

@@ -44,6 +44,14 @@ describe("inferHookSourceFromPayload", () => {
 		).toBe("claude");
 	});
 
+	it("infers pi from explicit source metadata", () => {
+		expect(
+			inferHookSourceFromPayload({
+				source: "pi",
+			}),
+		).toBe("pi");
+	});
+
 	it("returns null when no source can be inferred", () => {
 		expect(
 			inferHookSourceFromPayload({

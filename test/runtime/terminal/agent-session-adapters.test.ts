@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { prepareAgentLaunch } from "../../../src/terminal/agent-session-adapters.js";
+import { buildPiTaskSessionDir, encodePathSegment } from "../../../src/terminal/pi-session-paths.js";
 
 const originalHome = process.env.HOME;
 const originalAppData = process.env.APPDATA;
@@ -520,5 +521,80 @@ describe("prepareAgentLaunch hook strategies", () => {
 			prompt: "",
 		});
 		expect(clineLaunch.args).toContain("--auto-approve-all");
+	});
+
+	it("prepares pi task sessions with extension, session dir, plan-mode prompt, and hook env", async () => {
+		setupTempHome();
+		setKanbanProcessContext();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp/repo",
+			prompt: "Implement the feature",
+			workspaceId: "workspace-1",
+			startInPlanMode: true,
+		});
+
+		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-pi");
+		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
+		expect(launch.args).toContain("-e");
+		const extensionIndex = launch.args.indexOf("-e");
+		const extensionPath = launch.args[extensionIndex + 1] ?? "";
+		expect(extensionPath).toContain(join(homedir(), ".cline", "kanban", "hooks", "pi", "kanban-extension.ts"));
+		expect(existsSync(extensionPath)).toBe(true);
+		expect(readFileSync(extensionPath, "utf8")).toContain("tool_execution_start");
+		expect(launch.args).toContain("--session-dir");
+		const sessionDir = launch.args[launch.args.indexOf("--session-dir") + 1];
+		expect(sessionDir).toBe(buildPiTaskSessionDir("workspace-1", "task-pi"));
+		expect(sessionDir).not.toContain("workspace-1/task-pi");
+		expect(launch.args.at(-1)).toContain("Please create a plan for this task before implementing. Do not make changes yet.");
+		expect(launch.args).not.toContain("--append-system-prompt");
+		expect(launch.args).not.toContain("--no-session");
+	});
+
+	it("prepares pi resume sessions with deterministic continue semantics", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-pi-resume",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp/repo",
+			prompt: "Continue",
+			workspaceId: "workspace-1",
+			resumeFromTrash: true,
+		});
+
+		expect(launch.args).toContain("--continue");
+		expect(launch.args).toContain("--session-dir");
+	});
+
+	it("prepares pi home sessions with appended system prompt and no session persistence", async () => {
+		setupTempHome();
+		setKanbanProcessContext();
+		const launch = await prepareAgentLaunch({
+			taskId: "__home_agent__:workspace-1:pi:abc123",
+			agentId: "pi",
+			binary: "pi",
+			args: [],
+			cwd: "/tmp/repo",
+			prompt: "",
+			workspaceId: "workspace-1",
+		});
+
+		expect(launch.args).toContain("--append-system-prompt");
+		expect(launch.args).toContain("--no-session");
+		expect(launch.args).not.toContain("--session-dir");
+		expect(launch.args).not.toContain("--continue");
+		expect(launch.args.join(" ")).toContain("Kanban sidebar agent");
+	});
+
+	it("encodes pi session-dir path segments safely", () => {
+		expect(encodePathSegment("workspace-1")).not.toContain("/");
+		expect(encodePathSegment("task:1")).not.toContain(":");
+		expect(buildPiTaskSessionDir("workspace-1", "task:1")).toContain(encodePathSegment("workspace-1"));
+		expect(buildPiTaskSessionDir("workspace-1", "task:1")).toContain(encodePathSegment("task:1"));
 	});
 });
