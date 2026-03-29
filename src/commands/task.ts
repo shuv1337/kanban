@@ -1,5 +1,6 @@
 import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
 import type { Command } from "commander";
+import { rm } from "node:fs/promises";
 
 import type { RuntimeBoardCard, RuntimeBoardDependency, RuntimeWorkspaceStateResponse } from "../core/api-contract.js";
 import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin } from "../core/runtime-endpoint.js";
@@ -14,6 +15,7 @@ import {
 	trashTaskAndGetReadyLinkedTaskIds,
 	updateTask,
 } from "../core/task-board-mutations.js";
+import { buildPiTaskSessionDir } from "../terminal/pi-session-paths.js";
 import { resolveProjectInputPath } from "../projects/project-path.js";
 import { loadWorkspaceContext, mutateWorkspaceState } from "../state/workspace-state.js";
 import type { RuntimeAppRouter } from "../trpc/app-router.js";
@@ -138,6 +140,11 @@ async function notifyRuntimeWorkspaceStateUpdated(
 	runtimeClient: ReturnType<typeof createRuntimeTrpcClient>,
 ): Promise<void> {
 	await runtimeClient.workspace.notifyStateUpdated.mutate().catch(() => null);
+}
+
+async function deletePiTaskSessionDir(workspaceId: string, taskId: string): Promise<void> {
+	const sessionDir = buildPiTaskSessionDir(workspaceId, taskId);
+	await rm(sessionDir, { recursive: true, force: true }).catch(() => undefined);
 }
 
 async function updateRuntimeWorkspaceState<T>(
@@ -821,10 +828,13 @@ async function deleteTaskCommand(input: {
 	await Promise.all(mutation.value.deletedTaskIds.map(async (taskId) => await stopTaskRuntimeSession(runtimeClient, taskId)));
 
 	const workspaceCleanupResults = await Promise.all(
-		mutation.value.deletedTaskIds.map(async (taskId) => ({
-			taskId,
-			...(await deleteTaskWorkspace(runtimeClient, taskId)),
-		})),
+		mutation.value.deletedTaskIds.map(async (taskId) => {
+			await deletePiTaskSessionDir(workspaceId, taskId);
+			return {
+				taskId,
+				...(await deleteTaskWorkspace(runtimeClient, taskId)),
+			};
+		}),
 	);
 
 	return {

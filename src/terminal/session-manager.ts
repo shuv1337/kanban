@@ -30,6 +30,7 @@ import {
 	type TerminalProtocolFilterState,
 } from "./terminal-protocol-filter.js";
 import type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service.js";
+import { writeStructuredRuntimeLog } from "../telemetry/runtime-log.js";
 
 const MAX_WORKSPACE_TRUST_BUFFER_CHARS = 16_384;
 const AUTO_RESTART_WINDOW_MS = 5_000;
@@ -402,6 +403,19 @@ export class TerminalSessionManager implements TerminalSessionService {
 				},
 			});
 		} catch (error) {
+			if (request.agentId === "pi") {
+				const message = error instanceof Error ? error.message : String(error);
+				writeStructuredRuntimeLog({
+					event: "pi_launch_failed",
+					agentId: request.agentId,
+					workspaceId: request.workspaceId ?? null,
+					taskId: request.taskId,
+					homeSession: false,
+					resumeFromTrash: request.resumeFromTrash === true,
+					errorClass: error instanceof Error ? error.name : "Error",
+					errorMessage: message,
+				});
+			}
 			if (launch.cleanup) {
 				void launch.cleanup().catch(() => {
 					// Best effort: cleanup failure is non-critical.

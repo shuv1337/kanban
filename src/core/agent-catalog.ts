@@ -58,6 +58,14 @@ export const RUNTIME_AGENT_CATALOG: RuntimeAgentCatalogEntry[] = [
 		autonomousArgs: ["--yolo"],
 		installUrl: "https://github.com/google-gemini/gemini-cli",
 	},
+	{
+		id: "pi",
+		label: "pi",
+		binary: "pi",
+		baseArgs: [],
+		autonomousArgs: [],
+		installUrl: "https://www.npmjs.com/package/@mariozechner/pi-coding-agent",
+	},
 ];
 
 // Temporarily keep launch support scoped to the core agent set.
@@ -66,6 +74,7 @@ export const RUNTIME_LAUNCH_SUPPORTED_AGENT_IDS: readonly RuntimeAgentId[] = [
 	"cline",
 	"claude",
 	"codex",
+	"pi",
 	// "opencode",
 	// "droid",
 	// "gemini",

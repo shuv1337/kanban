@@ -5,10 +5,12 @@ import { readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import type { RuntimeAgentId, RuntimeProjectShortcut } from "../core/api-contract.js";
 import {
-	isRuntimeAgentLaunchSupported,
-} from "../core/agent-catalog.js";
+	type RuntimeAgentId,
+	type RuntimeProjectShortcut,
+	runtimeAgentIdSchema,
+} from "../core/api-contract.js";
+import { isRuntimeAgentLaunchSupported } from "../core/agent-catalog.js";
 import { type LockRequest, lockedFileSystem } from "../fs/locked-file-system.js";
 import { detectInstalledCommands } from "../terminal/agent-registry.js";
 import { areRuntimeProjectShortcutsEqual } from "./shortcut-utils.js";
@@ -118,16 +120,9 @@ function getRuntimeHomePath(): string {
 }
 
 function normalizeAgentId(agentId: RuntimeAgentId | string | null | undefined): RuntimeAgentId {
-	if (
-		(agentId === "claude" ||
-			agentId === "codex" ||
-			agentId === "gemini" ||
-			agentId === "opencode" ||
-			agentId === "droid" ||
-			agentId === "cline") &&
-		isRuntimeAgentLaunchSupported(agentId)
-	) {
-		return agentId;
+	const parsed = runtimeAgentIdSchema.safeParse(agentId);
+	if (parsed.success && isRuntimeAgentLaunchSupported(parsed.data)) {
+		return parsed.data;
 	}
 	return DEFAULT_AGENT_ID;
 }
