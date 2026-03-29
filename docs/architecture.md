@@ -124,7 +124,7 @@ Kanban currently supports three runtime modes.
 | Runtime mode | Used for | Scope | Backing implementation | Why it exists |
 | --- | --- | --- | --- | --- |
 | Native Cline chat | Cline | task-scoped, plus a project-scoped sidebar surface | Cline SDK session host | Cline exposes richer chat semantics, provider settings, OAuth, and persisted session history |
-| CLI-backed task terminal | Claude Code, Codex, Gemini, OpenCode, Droid, and similar agents | task-scoped | PTY-backed process runtime | these agents are command-driven CLIs and already fit the terminal model well |
+| CLI-backed task terminal | Claude Code, Codex, pi, Gemini, OpenCode, Droid, and similar agents | task-scoped | PTY-backed process runtime | these agents are command-driven CLIs and already fit the terminal model well |
 | Workspace shell terminal | the bottom shell panel | workspace-scoped | PTY-backed shell process | this is for manual commands in the repo, not task execution |
 
 The crucial point is that Cline is not just "another agent command". It is a native runtime path. Treating it like a terminal process would throw away useful structure that the SDK already gives us.
@@ -201,7 +201,9 @@ The `src/terminal/` area owns everything process-oriented:
 - translating process lifecycle into Kanban runtime summaries
 - handling the workspace shell terminal
 
-This is the path for Claude Code, Codex, Gemini, OpenCode, Droid, and any other command-driven agent.
+This is the path for Claude Code, Codex, pi, Gemini, OpenCode, Droid, and any other command-driven agent.
+
+For pi specifically, Kanban keeps the integration PTY-backed in v1 and injects a generated extension under `~/.cline/kanban/hooks/pi/kanban-extension.ts`. Task sessions use deterministic `--session-dir` paths scoped by encoded workspace/task ids so `--continue` can reliably resume trashed tasks without reusing raw task ids as filesystem segments. Home sidebar sessions are intentionally ephemeral and therefore use `--no-session` instead of `--session-dir`.
 
 ### Native Cline integration
 
