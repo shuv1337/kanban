@@ -9,6 +9,7 @@ describe("runtime onboarding helpers", () => {
 	it("treats non-cline selections as authenticated", () => {
 		expect(isSelectedAgentAuthenticated("claude", null)).toBe(true);
 		expect(isSelectedAgentAuthenticated("codex", null)).toBe(true);
+		expect(isSelectedAgentAuthenticated("pi", null)).toBe(true);
 	});
 
 	it("checks cline authentication from provider settings", () => {

@@ -22,7 +22,7 @@ function createRuntimeConfigResponse(
 		globalConfigPath: "/tmp/global-config.json",
 		projectConfigPath: "/tmp/project/.cline/kanban/config.json",
 		readyForReviewNotificationsEnabled: true,
-		detectedCommands: ["claude", "codex"],
+		detectedCommands: ["claude", "codex", "pi"],
 		agents: [
 			{
 				id: "cline",
@@ -41,6 +41,15 @@ function createRuntimeConfigResponse(
 				defaultArgs: [],
 				installed: true,
 				configured: true,
+			},
+			{
+				id: "pi",
+				label: "pi",
+				binary: "pi",
+				command: "pi",
+				defaultArgs: [],
+				installed: true,
+				configured: false,
 			},
 		],
 		shortcuts: [],
@@ -85,6 +94,7 @@ describe("native-agent helpers", () => {
 	it("treats cline as the native chat agent", () => {
 		expect(isNativeClineAgentSelected("cline")).toBe(true);
 		expect(isNativeClineAgentSelected("codex")).toBe(false);
+		expect(isNativeClineAgentSelected("pi")).toBe(false);
 	});
 
 	it("treats selected cline as task-ready when cline authentication is configured", () => {
@@ -237,6 +247,11 @@ describe("native-agent helpers", () => {
 			},
 		];
 		expect(isTaskAgentSetupSatisfied(config)).toBe(false);
+	});
+
+	it("treats pi as a launch-supported non-native CLI agent", () => {
+		const config = createRuntimeConfigResponse("pi");
+		expect(isTaskAgentSetupSatisfied(config)).toBe(true);
 	});
 
 	it("selects the latest incoming chat message only for the matching task", () => {

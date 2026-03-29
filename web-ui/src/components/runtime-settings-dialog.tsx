@@ -57,7 +57,11 @@ function buildDisplayedAgentCommand(agentId: RuntimeAgentId, binary: string, aut
 	if (agentId === "cline") {
 		return "";
 	}
-	const args = autonomousModeEnabled ? (getRuntimeAgentCatalogEntry(agentId)?.autonomousArgs ?? []) : [];
+	const catalogEntry = getRuntimeAgentCatalogEntry(agentId);
+	const args = autonomousModeEnabled ? (catalogEntry?.autonomousArgs ?? []) : [];
+	if (args.length === 0) {
+		return binary;
+	}
 	return [binary, ...args.map(quoteCommandPartForDisplay)].join(" ");
 }
 
@@ -72,7 +76,7 @@ const GIT_PROMPT_VARIANT_OPTIONS: Array<{ value: TaskGitAction; label: string }>
 
 export type RuntimeSettingsSection = "shortcuts";
 
-const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["cline", "claude", "codex"];
+const SETTINGS_AGENT_ORDER: readonly RuntimeAgentId[] = ["cline", "claude", "codex", "pi"];
 
 function getShortcutIconOption(icon: string | undefined): RuntimeShortcutIconOption {
 	return getRuntimeShortcutPickerOption(icon);
@@ -327,6 +331,8 @@ export function RuntimeSettingsDialog({
 	const selectedPromptPlaceholder =
 		selectedPromptVariant === "commit" ? "Commit prompt template" : "PR prompt template";
 	const bypassPermissionsCheckboxId = "runtime-settings-bypass-permissions";
+	const selectedAgentCatalogEntry = getRuntimeAgentCatalogEntry(selectedAgentId);
+	const selectedAgentSupportsAutonomousFlag = (selectedAgentCatalogEntry?.autonomousArgs.length ?? 0) > 0;
 	const refreshNotificationPermission = useCallback(() => {
 		setNotificationPermission(getBrowserNotificationPermission());
 	}, []);
@@ -625,27 +631,40 @@ export function RuntimeSettingsDialog({
 				{config === null ? (
 					<p className="text-text-secondary py-2">Checking which CLIs are installed for this project...</p>
 				) : null}
-				<label
-					htmlFor={bypassPermissionsCheckboxId}
-					className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
-				>
-					<RadixCheckbox.Root
-						id={bypassPermissionsCheckboxId}
-						aria-label="Enable bypass permissions flag"
-						checked={agentAutonomousModeEnabled}
-						disabled={controlsDisabled}
-						onCheckedChange={(checked) => setAgentAutonomousModeEnabled(checked === true)}
-						className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
-					>
-						<RadixCheckbox.Indicator>
-							<Check size={12} className="text-white" />
-						</RadixCheckbox.Indicator>
-					</RadixCheckbox.Root>
-					<span>Enable bypass permissions flag</span>
-				</label>
-				<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
-					Allows agents to use tools without stopping for permission. Use at your own risk.
-				</p>
+				{selectedAgentSupportsAutonomousFlag ? (
+					<>
+						<label
+							htmlFor={bypassPermissionsCheckboxId}
+							className="flex items-center gap-2 text-[13px] text-text-primary mt-2 cursor-pointer"
+						>
+							<RadixCheckbox.Root
+								id={bypassPermissionsCheckboxId}
+								aria-label="Enable autonomous mode"
+								checked={agentAutonomousModeEnabled}
+								disabled={controlsDisabled}
+								onCheckedChange={(checked) => setAgentAutonomousModeEnabled(checked === true)}
+								className="flex h-4 w-4 cursor-pointer items-center justify-center rounded border border-border bg-surface-2 data-[state=checked]:bg-accent data-[state=checked]:border-accent disabled:cursor-default disabled:opacity-40"
+							>
+								<RadixCheckbox.Indicator>
+									<Check size={12} className="text-white" />
+								</RadixCheckbox.Indicator>
+							</RadixCheckbox.Root>
+							<span>Enable autonomous mode</span>
+						</label>
+						<p className="text-text-secondary text-[13px] ml-6 mt-0 mb-0">
+							Allows agents to use their runtime autonomy flag when one is available. Use at your own risk.
+						</p>
+					</>
+				) : (
+					<div className="mt-2 rounded-md border border-border bg-surface-1 px-3 py-2">
+						<p className="m-0 text-[13px] text-text-primary">Autonomous mode</p>
+						<p className="mt-1 mb-0 text-[13px] text-text-secondary">
+							{selectedAgentId === "pi"
+								? "pi does not expose a permission-bypass/autonomy launch flag; Kanban launches pi without an additional autonomy switch."
+								: `${selectedAgentCatalogEntry?.label ?? selectedAgentId} does not expose an additional autonomy launch flag.`}
+						</p>
+					</div>
+				)}
 
 				{selectedAgentId === "cline" ? (
 					<ClineSetupSection
