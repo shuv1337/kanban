@@ -15,7 +15,7 @@ function selectiveBuildMinifyPlugin(): Plugin {
 	let resolvedConfig: ResolvedConfig | null = null;
 
 	return {
-		name: "kanban-selective-build-minify",
+		name: "shuvban-selective-build-minify",
 		apply: "build",
 		configResolved(config) {
 			resolvedConfig = config;
@@ -81,7 +81,6 @@ export default defineConfig({
 		alias: {
 			"@": resolve(__dirname, "src"),
 			"@runtime-agent-catalog": resolve(__dirname, "../src/core/agent-catalog.ts"),
-			"@runtime-cline-tool-call-display": resolve(__dirname, "../src/cline-sdk/cline-tool-call-display.ts"),
 			"@runtime-home-agent-session": resolve(__dirname, "../src/core/home-agent-session.ts"),
 			"@runtime-shortcuts": resolve(__dirname, "../src/config/shortcut-utils.ts"),
 			"@runtime-task-id": resolve(__dirname, "../src/core/task-id.ts"),

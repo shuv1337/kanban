@@ -1,9 +1,9 @@
+import { rm } from "node:fs/promises";
 import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
 import type { Command } from "commander";
-import { rm } from "node:fs/promises";
 
 import type { RuntimeBoardCard, RuntimeBoardDependency, RuntimeWorkspaceStateResponse } from "../core/api-contract";
-import { buildKanbanRuntimeUrl, getKanbanRuntimeOrigin } from "../core/runtime-endpoint";
+import { buildShuvbanRuntimeUrl, getShuvbanRuntimeOrigin } from "../core/runtime-endpoint";
 import {
 	addTaskDependency,
 	addTaskToColumn,
@@ -16,8 +16,8 @@ import {
 	updateTask,
 } from "../core/task-board-mutations";
 import { resolveProjectInputPath } from "../projects/project-path";
-import { buildPiTaskSessionDir } from "../terminal/pi-session-paths";
 import { loadWorkspaceContext, mutateWorkspaceState } from "../state/workspace-state";
+import { buildPiTaskSessionDir } from "../terminal/pi-session-paths";
 import type { RuntimeAppRouter } from "../trpc/app-router";
 
 const LIST_TASK_COLUMNS = ["backlog", "in_progress", "review", "trash"] as const;
@@ -97,8 +97,8 @@ function createRuntimeTrpcClient(workspaceId: string | null) {
 	return createTRPCProxyClient<RuntimeAppRouter>({
 		links: [
 			httpBatchLink({
-				url: buildKanbanRuntimeUrl("/api/trpc"),
-				headers: () => (workspaceId ? { "x-kanban-workspace-id": workspaceId } : {}),
+				url: buildShuvbanRuntimeUrl("/api/trpc"),
+				headers: () => (workspaceId ? { "x-shuvban-workspace-id": workspaceId } : {}),
 			}),
 		],
 	});
@@ -131,7 +131,7 @@ async function ensureRuntimeWorkspace(workspaceRepoPath: string): Promise<string
 		path: workspaceRepoPath,
 	});
 	if (!added.ok || !added.project) {
-		throw new Error(added.error ?? `Could not register project ${workspaceRepoPath} in Kanban runtime.`);
+		throw new Error(added.error ?? `Could not register project ${workspaceRepoPath} in Shuvban runtime.`);
 	}
 	return added.project.id;
 }
@@ -878,18 +878,18 @@ async function runTaskCommand(handler: () => Promise<JsonRecord>): Promise<void>
 	} catch (error) {
 		printJson({
 			ok: false,
-			error: `Task command failed at ${getKanbanRuntimeOrigin()}: ${toErrorMessage(error)}`,
+			error: `Task command failed at ${getShuvbanRuntimeOrigin()}: ${toErrorMessage(error)}`,
 		});
 		process.exitCode = 1;
 	}
 }
 
 export function registerTaskCommand(program: Command): void {
-	const task = program.command("task").alias("tasks").description("Manage Kanban board tasks from the CLI.");
+	const task = program.command("task").alias("tasks").description("Manage Shuvban board tasks from the CLI.");
 
 	task
 		.command("list")
-		.description("List Kanban tasks for a workspace.")
+		.description("List Shuvban tasks for a workspace.")
 		.option("--project-path <path>", "Workspace path. Defaults to current directory workspace.")
 		.option("--column <column>", "Filter column: backlog | in_progress | review | trash.", parseListColumn)
 		.action(async (options: { projectPath?: string; column?: ListTaskColumn }) => {
@@ -1019,10 +1019,10 @@ export function registerTaskCommand(program: Command): void {
 			[
 				"",
 				"Dependency direction:",
-				"  If both linked tasks are in backlog, Kanban preserves the order you pass:",
+				"  If both linked tasks are in backlog, Shuvban preserves the order you pass:",
 				"  --task-id waits on --linked-task-id, and on the board the arrow points into",
 				"  --linked-task-id.",
-				"  Once only one linked task remains in backlog, Kanban reorients the saved link",
+				"  Once only one linked task remains in backlog, Shuvban reorients the saved link",
 				"  so the backlog task is the waiting dependent task and the other task is the",
 				"  prerequisite.",
 				"  When the prerequisite finishes review and moves to trash, the waiting backlog",

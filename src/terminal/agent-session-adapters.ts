@@ -8,20 +8,20 @@ import type {
 	RuntimeTaskImage,
 	RuntimeTaskSessionSummary,
 } from "../core/api-contract";
-import { buildKanbanCommandParts } from "../core/kanban-command";
 import { quoteShellArg } from "../core/shell";
+import { buildShuvbanCommandParts } from "../core/shuvban-command";
 import { lockedFileSystem } from "../fs/locked-file-system";
 import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
 import { getRuntimeHomePath } from "../state/workspace-state";
 import { writeStructuredRuntimeLog } from "../telemetry/runtime-log";
 import { createHookRuntimeEnv } from "./hook-runtime-context";
-import { buildPiTaskSessionDir } from "./pi-session-paths";
 import {
 	getOpenCodeAuthPathCandidates,
 	getOpenCodeConfigPathCandidates,
 	getOpenCodeModelStatePathCandidates,
 } from "./opencode-paths";
 import { stripAnsi } from "./output-utils";
+import { buildPiTaskSessionDir } from "./pi-session-paths";
 import type { SessionTransitionEvent } from "./session-state-machine";
 import { prepareTaskPromptWithImages } from "./task-image-prompt";
 
@@ -109,7 +109,7 @@ function buildHookCommand(event: RuntimeHookEvent, metadata?: HookCommandMetadat
 }
 
 function buildHooksCommandParts(args: string[]): string[] {
-	return buildKanbanCommandParts(["hooks", ...args]);
+	return buildShuvbanCommandParts(["hooks", ...args]);
 }
 
 function buildHookNotifyCommandParts(event: RuntimeHookEvent, source?: string): string[] {
@@ -152,144 +152,6 @@ function hasCodexConfigOverride(args: string[], key: string): boolean {
 	return false;
 }
 
-function getClineHookScriptPath(
-	hooksDir: string,
-	hookName: "Notification" | "TaskComplete" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse",
-): string {
-	if (process.platform === "win32") {
-		return join(hooksDir, `${hookName}.ps1`);
-	}
-	return join(hooksDir, hookName);
-}
-
-function buildClineHookScriptContent(event: RuntimeHookEvent): string {
-	const commandParts = buildHooksCommandParts(["notify", "--event", event, "--source", "cline"]);
-	if (process.platform === "win32") {
-		const command = commandParts.map(powerShellQuote).join(" ");
-		return `$inputText = [Console]::In.ReadToEnd()
-try {
-  $inputText | & ${command} | Out-Null
-} catch {
-}
-Write-Output '{"cancel":false}'
-exit 0
-`;
-	}
-	const command = commandParts.map(quoteShellArg).join(" ");
-	return `#!/usr/bin/env bash
-INPUT="$(cat || true)"
-printf '%s' "$INPUT" | ${command} >/dev/null 2>&1 || true
-echo '{"cancel":false}'
-`;
-}
-
-function buildClineNotificationHookScriptContent(): string {
-	const commandParts = buildHooksCommandParts(["notify", "--event", "to_review", "--source", "cline"]);
-	if (process.platform === "win32") {
-		const command = commandParts.map(powerShellQuote).join(" ");
-		return `$inputText = [Console]::In.ReadToEnd()
-if (
-  $inputText -match '"event"\\s*:\\s*"user_attention"' -and
-  $inputText -notmatch '"source"\\s*:\\s*"completion_result"'
-) {
-  try {
-    $inputText | & ${command} | Out-Null
-  } catch {
-  }
-}
-Write-Output '{"cancel":false}'
-exit 0
-`;
-	}
-	const command = commandParts.map(quoteShellArg).join(" ");
-	return `#!/usr/bin/env bash
-INPUT="$(cat || true)"
-if printf '%s' "$INPUT" | grep -Eq '"event"[[:space:]]*:[[:space:]]*"user_attention"' &&
-  ! printf '%s' "$INPUT" | grep -Eq '"source"[[:space:]]*:[[:space:]]*"completion_result"'; then
-  printf '%s' "$INPUT" | ${command} >/dev/null 2>&1 || true
-fi
-echo '{"cancel":false}'
-`;
-}
-
-function buildClinePreToolUseHookScriptContent(): string {
-	const activityCommand = buildHooksCommandParts(["notify", "--event", "activity", "--source", "cline"]);
-	const reviewCommand = buildHooksCommandParts(["notify", "--event", "to_review", "--source", "cline"]);
-	const inProgressCommand = buildHooksCommandParts(["notify", "--event", "to_in_progress", "--source", "cline"]);
-	if (process.platform === "win32") {
-		const activity = activityCommand.map(powerShellQuote).join(" ");
-		const review = reviewCommand.map(powerShellQuote).join(" ");
-		const inProgress = inProgressCommand.map(powerShellQuote).join(" ");
-		return `$inputText = [Console]::In.ReadToEnd()
-$isUserQuestionTool = $inputText -match '"(toolName|tool)"\\s*:\\s*"(ask_followup_question|plan_mode_respond)"'
-try {
-  $inputText | & ${activity} | Out-Null
-} catch {
-}
-if ($isUserQuestionTool) {
-  try {
-    $inputText | & ${review} | Out-Null
-  } catch {
-  }
-} else {
-  try {
-    $inputText | & ${inProgress} | Out-Null
-  } catch {
-  }
-}
-Write-Output '{"cancel":false}'
-exit 0
-`;
-	}
-	const activity = activityCommand.map(quoteShellArg).join(" ");
-	const review = reviewCommand.map(quoteShellArg).join(" ");
-	const inProgress = inProgressCommand.map(quoteShellArg).join(" ");
-	return `#!/usr/bin/env bash
-INPUT="$(cat || true)"
-printf '%s' "$INPUT" | ${activity} >/dev/null 2>&1 || true
-if printf '%s' "$INPUT" | grep -Eq '"(toolName|tool)"[[:space:]]*:[[:space:]]*"(ask_followup_question|plan_mode_respond)"'; then
-  printf '%s' "$INPUT" | ${review} >/dev/null 2>&1 || true
-else
-  printf '%s' "$INPUT" | ${inProgress} >/dev/null 2>&1 || true
-fi
-echo '{"cancel":false}'
-`;
-}
-
-function buildClinePostToolUseHookScriptContent(): string {
-	const activityCommand = buildHooksCommandParts(["notify", "--event", "activity", "--source", "cline"]);
-	const inProgressCommand = buildHooksCommandParts(["notify", "--event", "to_in_progress", "--source", "cline"]);
-	if (process.platform === "win32") {
-		const activity = activityCommand.map(powerShellQuote).join(" ");
-		const inProgress = inProgressCommand.map(powerShellQuote).join(" ");
-		return `$inputText = [Console]::In.ReadToEnd()
-$isUserQuestionTool = $inputText -match '"(toolName|tool)"\\s*:\\s*"(ask_followup_question|plan_mode_respond)"'
-try {
-  $inputText | & ${activity} | Out-Null
-} catch {
-}
-if ($isUserQuestionTool) {
-  try {
-    $inputText | & ${inProgress} | Out-Null
-  } catch {
-  }
-}
-Write-Output '{"cancel":false}'
-exit 0
-`;
-	}
-	const activity = activityCommand.map(quoteShellArg).join(" ");
-	const inProgress = inProgressCommand.map(quoteShellArg).join(" ");
-	return `#!/usr/bin/env bash
-INPUT="$(cat || true)"
-printf '%s' "$INPUT" | ${activity} >/dev/null 2>&1 || true
-if printf '%s' "$INPUT" | grep -Eq '"(toolName|tool)"[[:space:]]*:[[:space:]]*"(ask_followup_question|plan_mode_respond)"'; then
-  printf '%s' "$INPUT" | ${inProgress} >/dev/null 2>&1 || true
-fi
-echo '{"cancel":false}'
-`;
-}
-
 function buildOpenCodePluginContent(
 	reviewCommand: string,
 	toInProgressCommand: string,
@@ -298,11 +160,11 @@ function buildOpenCodePluginContent(
 	const reviewCmd = escapeForTemplateLiteral(reviewCommand);
 	const toInProgressCmd = escapeForTemplateLiteral(toInProgressCommand);
 	const activityCmd = escapeForTemplateLiteral(activityCommand);
-	return `export const KanbanPlugin = async ({ $, client }) => {
-  if (globalThis.__kanbanOpencodePluginV3) return {};
-  globalThis.__kanbanOpencodePluginV3 = true;
+	return `export const ShuvbanPlugin = async ({ $, client }) => {
+  if (globalThis.__shuvbanOpencodePluginV3) return {};
+  globalThis.__shuvbanOpencodePluginV3 = true;
 
-  if (!process?.env?.KANBAN_HOOK_TASK_ID) return {};
+  if (!process?.env?.SHUVBAN_HOOK_TASK_ID) return {};
 
   let currentState = "idle";
   let rootSessionID = null;
@@ -691,7 +553,7 @@ function summarizeToolInput(args: unknown): string | null {
 
 function getRuntimeHomePath(): string {
 	const home = process.env.CLINE_HOME || process.env.HOME || process.env.USERPROFILE || "/tmp";
-	return join(home, ".cline", "kanban");
+	return join(home, ".shuvban");
 }
 
 function getPiHookLogFilePath(workspaceId: string, taskId: string): string {
@@ -716,8 +578,8 @@ async function notify(
 	toolName?: string,
 	toolInputSummary?: string | null,
 ): Promise<void> {
-	const taskId = process.env.KANBAN_HOOK_TASK_ID?.trim();
-	const workspaceId = process.env.KANBAN_HOOK_WORKSPACE_ID?.trim();
+	const taskId = process.env.SHUVBAN_HOOK_TASK_ID?.trim();
+	const workspaceId = process.env.SHUVBAN_HOOK_WORKSPACE_ID?.trim();
 	if (!taskId || !workspaceId) {
 		return;
 	}
@@ -784,8 +646,8 @@ async function notify(
 			errorClass: error.name,
 			errorMessage: error.message.slice(0, 500),
 			metadata: {
-				kanbanRuntimePort: process.env.KANBAN_RUNTIME_PORT,
-				kanbanRuntimeHost: process.env.KANBAN_RUNTIME_HOST,
+				shuvbanRuntimePort: process.env.SHUVBAN_RUNTIME_PORT,
+				shuvbanRuntimeHost: process.env.SHUVBAN_RUNTIME_HOST,
 			},
 		});
 	}
@@ -1354,7 +1216,7 @@ const opencodeAdapter: AgentSessionAdapter = {
 
 		const hooks = resolveHookContext(input);
 		if (hooks) {
-			const pluginPath = join(getHookAgentDirectory("opencode"), "kanban.js");
+			const pluginPath = join(getHookAgentDirectory("opencode"), "shuvban.js");
 			const configPath = join(getHookAgentDirectory("opencode"), "opencode.json");
 
 			const pluginContent = buildOpenCodePluginContent(
@@ -1476,63 +1338,6 @@ const droidAdapter: AgentSessionAdapter = {
 	},
 };
 
-const clineAdapter: AgentSessionAdapter = {
-	async prepare(input) {
-		const args = [...input.args];
-		const env: Record<string, string | undefined> = {};
-
-		if (input.autonomousModeEnabled && !hasCliOption(args, "--auto-approve-all")) {
-			args.push("--auto-approve-all");
-		}
-
-		if (input.resumeFromTrash && !hasCliOption(args, "--continue")) {
-			args.push("--continue");
-		}
-
-		if (input.startInPlanMode) {
-			args.push("--plan");
-		}
-
-		const hooks = resolveHookContext(input);
-		if (hooks) {
-			const hooksDir = getHookAgentDirectory("cline");
-			const notificationHookPath = getClineHookScriptPath(hooksDir, "Notification");
-			const taskCompleteHookPath = getClineHookScriptPath(hooksDir, "TaskComplete");
-			const userPromptSubmitHookPath = getClineHookScriptPath(hooksDir, "UserPromptSubmit");
-			const preToolUseHookPath = getClineHookScriptPath(hooksDir, "PreToolUse");
-			const postToolUseHookPath = getClineHookScriptPath(hooksDir, "PostToolUse");
-			const executable = process.platform !== "win32";
-
-			await ensureTextFile(notificationHookPath, buildClineNotificationHookScriptContent(), executable);
-			await ensureTextFile(taskCompleteHookPath, buildClineHookScriptContent("to_review"), executable);
-			await ensureTextFile(userPromptSubmitHookPath, buildClineHookScriptContent("to_in_progress"), executable);
-			await ensureTextFile(preToolUseHookPath, buildClinePreToolUseHookScriptContent(), executable);
-			await ensureTextFile(postToolUseHookPath, buildClinePostToolUseHookScriptContent(), executable);
-
-			if (!hasCliOption(args, "--hooks-dir")) {
-				args.push("--hooks-dir", hooksDir);
-			}
-
-			Object.assign(
-				env,
-				createHookRuntimeEnv({
-					taskId: hooks.taskId,
-					workspaceId: hooks.workspaceId,
-				}),
-			);
-		}
-
-		const withPromptLaunch = withPrompt(args, input.prompt, "append");
-		return {
-			...withPromptLaunch,
-			env: {
-				...withPromptLaunch.env,
-				...env,
-			},
-		};
-	},
-};
-
 const piAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
@@ -1541,7 +1346,7 @@ const piAdapter: AgentSessionAdapter = {
 		let prompt = input.prompt;
 
 		if (hooks) {
-			const extensionPath = join(getHookAgentDirectory("pi"), "kanban-extension.ts");
+			const extensionPath = join(getHookAgentDirectory("pi"), "shuvban-extension.ts");
 			const extensionContent = buildPiExtensionContent(extensionPath);
 			await ensureTextFile(extensionPath, extensionContent);
 			if (!hasCliOption(args, "-e") && !hasCliOption(args, "--extension")) {
@@ -1642,7 +1447,6 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 	gemini: geminiAdapter,
 	opencode: opencodeAdapter,
 	droid: droidAdapter,
-	cline: clineAdapter,
 	pi: piAdapter,
 };
 

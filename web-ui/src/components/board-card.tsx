@@ -1,5 +1,4 @@
 import { Draggable } from "@hello-pangea/dnd";
-import { formatClineToolCallLabel } from "@runtime-cline-tool-call-display";
 import { buildTaskWorktreeDisplayPath } from "@runtime-task-worktree-path";
 import { AlertCircle, GitBranch, Play, RotateCcw, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
@@ -100,13 +99,17 @@ function parseToolCallFromActivityText(
 	};
 }
 
+function formatToolCallLabel(toolName: string, toolInputSummary: string | null): string {
+	return toolInputSummary ? `${toolName}(${toolInputSummary})` : toolName;
+}
+
 function resolveToolCallLabel(
 	activityText: string | undefined,
 	toolName: string | null,
 	toolInputSummary: string | null,
 ): string | null {
 	if (toolName) {
-		return formatClineToolCallLabel(
+		return formatToolCallLabel(
 			toolName,
 			toolInputSummary ?? extractToolInputSummaryFromActivityText(activityText ?? "", toolName),
 		);
@@ -118,7 +121,7 @@ function resolveToolCallLabel(
 	if (!parsed) {
 		return null;
 	}
-	return formatClineToolCallLabel(parsed.toolName, parsed.toolInputSummary);
+	return formatToolCallLabel(parsed.toolName, parsed.toolInputSummary);
 }
 
 function getCardSessionActivity(summary: RuntimeTaskSessionSummary | undefined): CardSessionActivity | null {

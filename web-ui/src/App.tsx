@@ -11,10 +11,10 @@ import { ClearTrashDialog } from "@/components/clear-trash-dialog";
 import { DebugDialog } from "@/components/debug-dialog";
 import { AgentTerminalPanel } from "@/components/detail-panels/agent-terminal-panel";
 import { GitHistoryView } from "@/components/git-history-view";
-import { KanbanBoard } from "@/components/kanban-board";
 import { ProjectNavigationPanel } from "@/components/project-navigation-panel";
 import { ResizableBottomPane } from "@/components/resizable-bottom-pane";
 import { RuntimeSettingsDialog, type RuntimeSettingsSection } from "@/components/runtime-settings-dialog";
+import { ShuvbanBoard } from "@/components/shuvban-board";
 import { StartupOnboardingDialog } from "@/components/startup-onboarding-dialog";
 import { TaskCreateDialog } from "@/components/task-create-dialog";
 import { TaskInlineCreateCard } from "@/components/task-inline-create-card";
@@ -33,7 +33,6 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { createInitialBoardData } from "@/data/board-data";
 import { createIdleTaskSession } from "@/hooks/app-utils";
-import { KanbanAccessBlockedFallback } from "@/hooks/kanban-access-blocked-fallback";
 import { RuntimeDisconnectedFallback } from "@/hooks/runtime-disconnected-fallback";
 import { useAppHotkeys } from "@/hooks/use-app-hotkeys";
 import { useBoardInteractions } from "@/hooks/use-board-interactions";
@@ -41,8 +40,6 @@ import { useDebugTools } from "@/hooks/use-debug-tools";
 import { useDocumentVisibility } from "@/hooks/use-document-visibility";
 import { useFeaturebaseFeedbackWidget } from "@/hooks/use-featurebase-feedback-widget";
 import { useGitActions } from "@/hooks/use-git-actions";
-import { useHomeSidebarAgentPanel } from "@/hooks/use-home-sidebar-agent-panel";
-import { useKanbanAccessGate } from "@/hooks/use-kanban-access-gate";
 import { useOpenWorkspace } from "@/hooks/use-open-workspace";
 import { parseRemovedProjectPathFromStreamError, useProjectNavigation } from "@/hooks/use-project-navigation";
 import { useProjectUiState } from "@/hooks/use-project-ui-state";
@@ -55,12 +52,7 @@ import { useTaskSessions } from "@/hooks/use-task-sessions";
 import { useTaskStartActions } from "@/hooks/use-task-start-actions";
 import { useTerminalPanels } from "@/hooks/use-terminal-panels";
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync";
-import {
-	getTaskAgentNavbarHint,
-	isTaskAgentSetupSatisfied,
-	selectLatestTaskChatMessageForTask,
-	selectTaskChatMessagesForTask,
-} from "@/runtime/native-agent";
+import { getTaskAgentNavbarHint, isTaskAgentSetupSatisfied } from "@/runtime/task-agent-runtime";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 import { useRuntimeProjectConfig } from "@/runtime/use-runtime-project-config";
 import { useTerminalConnectionReady } from "@/runtime/use-terminal-connection-ready";
@@ -101,11 +93,7 @@ export default function App(): ReactElement {
 		projects,
 		workspaceState: streamedWorkspaceState,
 		workspaceMetadata,
-		latestTaskChatMessage,
-		taskChatMessagesByTaskId,
 		latestTaskReadyForReview,
-		latestMcpAuthStatuses,
-		clineSessionContextVersion,
 		streamError,
 		isRuntimeDisconnected,
 		hasReceivedSnapshot,
@@ -134,23 +122,16 @@ export default function App(): ReactElement {
 		isLoading: isRuntimeProjectConfigLoading,
 		refresh: refreshRuntimeProjectConfig,
 	} = useRuntimeProjectConfig(currentProjectId);
-	const { isBlocked: isKanbanAccessBlocked } = useKanbanAccessGate({
-		workspaceId: currentProjectId,
-	});
 	const isTaskAgentReady = isTaskAgentSetupSatisfied(runtimeProjectConfig);
 	const settingsWorkspaceId = navigationCurrentProjectId ?? currentProjectId;
 	const { config: settingsRuntimeProjectConfig, refresh: refreshSettingsRuntimeProjectConfig } =
 		useRuntimeProjectConfig(settingsWorkspaceId);
-	useFeaturebaseFeedbackWidget({
-		workspaceId: settingsWorkspaceId,
-		clineProviderSettings: settingsRuntimeProjectConfig?.clineProviderSettings ?? null,
-	});
+	useFeaturebaseFeedbackWidget();
 	const {
 		isStartupOnboardingDialogOpen,
 		handleOpenStartupOnboardingDialog,
 		handleCloseStartupOnboardingDialog,
 		handleSelectOnboardingAgent,
-		handleOnboardingClineSetupSaved,
 	} = useStartupOnboarding({
 		currentProjectId,
 		runtimeProjectConfig,
@@ -194,9 +175,6 @@ export default function App(): ReactElement {
 		startTaskSession,
 		stopTaskSession,
 		sendTaskSessionInput,
-		sendTaskChatMessage,
-		cancelTaskChatTurn,
-		fetchTaskChatMessages,
 		cleanupTaskWorkspace,
 		fetchTaskWorkspaceInfo,
 	} = useTaskSessions({
@@ -372,7 +350,6 @@ export default function App(): ReactElement {
 		selectedCard,
 		runtimeProjectConfig,
 		sendTaskSessionInput,
-		sendTaskChatMessage,
 		fetchTaskWorkspaceInfo,
 		isGitHistoryOpen,
 		refreshWorkspaceState,
@@ -410,16 +387,22 @@ export default function App(): ReactElement {
 		sendTaskSessionInput,
 	});
 	const homeTerminalSummary = sessions[homeTerminalTaskId] ?? null;
-	const homeSidebarAgentPanel = useHomeSidebarAgentPanel({
-		currentProjectId,
-		hasNoProjects,
-		runtimeProjectConfig,
-		clineSessionContextVersion,
-		taskSessions: sessions,
-		workspaceGit,
-		latestTaskChatMessage,
-		taskChatMessagesByTaskId,
-	});
+	const homeSidebarAgentPanel =
+		hasNoProjects || !currentProjectId ? null : (
+			<AgentTerminalPanel
+				key={`home-agent-${homeTerminalTaskId}`}
+				taskId={homeTerminalTaskId}
+				workspaceId={currentProjectId}
+				summary={homeTerminalSummary}
+				onSummary={upsertSession}
+				showSessionToolbar={false}
+				autoFocus
+				panelBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
+				terminalBackgroundColor={TERMINAL_THEME_COLORS.surfaceRaised}
+				cursorColor={TERMINAL_THEME_COLORS.textPrimary}
+				showRightBorder={false}
+			/>
+		);
 	const { runningShortcutLabel, handleSelectShortcutLabel, handleRunShortcut, handleCreateShortcut } =
 		useShortcutActions({
 			currentProjectId,
@@ -697,11 +680,6 @@ export default function App(): ReactElement {
 		currentProjectId,
 		workspacePath: activeWorkspacePath,
 	});
-	const selectedTaskChatMessages = selectTaskChatMessagesForTask(selectedCard?.card.id, taskChatMessagesByTaskId);
-	const latestSelectedTaskChatMessage = selectLatestTaskChatMessageForTask(
-		selectedCard?.card.id,
-		latestTaskChatMessage,
-	);
 	const handleCreateDialogOpenChange = useCallback(
 		(open: boolean) => {
 			if (!open) {
@@ -738,9 +716,6 @@ export default function App(): ReactElement {
 
 	if (isRuntimeDisconnected) {
 		return <RuntimeDisconnectedFallback />;
-	}
-	if (isKanbanAccessBlocked) {
-		return <KanbanAccessBlockedFallback />;
 	}
 
 	return (
@@ -836,7 +811,7 @@ export default function App(): ReactElement {
 									<FolderOpen size={48} strokeWidth={1} />
 									<h3 className="text-sm font-semibold text-text-primary">No projects yet</h3>
 									<p className="text-[13px] text-text-secondary">
-										Add a git repository to start using Kanban.
+										Add a git repository to start using Shuvban.
 									</p>
 									<Button
 										variant="primary"
@@ -864,7 +839,7 @@ export default function App(): ReactElement {
 											isDiscardWorkingChangesPending={isDiscardingHomeWorkingChanges}
 										/>
 									) : (
-										<KanbanBoard
+										<ShuvbanBoard
 											data={board}
 											taskSessions={sessions}
 											workspacePath={workspacePath}
@@ -976,11 +951,6 @@ export default function App(): ReactElement {
 								onSendReviewComments={(taskId: string, text: string) => {
 									void handleSendReviewComments(taskId, text);
 								}}
-								onSendClineChatMessage={sendTaskChatMessage}
-								onCancelClineChatTurn={cancelTaskChatTurn}
-								onLoadClineChatMessages={fetchTaskChatMessages}
-								latestClineChatMessage={latestSelectedTaskChatMessage}
-								streamedClineChatMessages={selectedTaskChatMessages}
 								onMoveToTrash={handleMoveToTrash}
 								isMoveToTrashLoading={moveToTrashLoadingById[selectedCard.card.id] ?? false}
 								gitHistoryPanel={
@@ -1002,7 +972,6 @@ export default function App(): ReactElement {
 								isBottomTerminalExpanded={isDetailTerminalExpanded}
 								onBottomTerminalToggleExpand={handleToggleExpandDetailTerminal}
 								isDocumentVisible={isDocumentVisible}
-								onClineSettingsSaved={refreshRuntimeProjectConfig}
 							/>
 						</div>
 					) : null}
@@ -1012,7 +981,6 @@ export default function App(): ReactElement {
 				open={isSettingsOpen}
 				workspaceId={settingsWorkspaceId}
 				initialConfig={settingsRuntimeProjectConfig}
-				liveMcpAuthStatuses={latestMcpAuthStatuses}
 				initialSection={settingsInitialSection}
 				onOpenChange={(nextOpen) => {
 					setIsSettingsOpen(nextOpen);
@@ -1067,11 +1035,9 @@ export default function App(): ReactElement {
 				onClose={handleCloseStartupOnboardingDialog}
 				selectedAgentId={runtimeProjectConfig?.selectedAgentId ?? null}
 				agents={runtimeProjectConfig?.agents ?? []}
-				clineProviderSettings={runtimeProjectConfig?.clineProviderSettings ?? null}
 				workspaceId={currentProjectId}
 				runtimeConfig={runtimeProjectConfig ?? null}
 				onSelectAgent={handleSelectOnboardingAgent}
-				onClineSetupSaved={handleOnboardingClineSetupSaved}
 			/>
 
 			<AlertDialog
@@ -1088,7 +1054,7 @@ export default function App(): ReactElement {
 				<AlertDialogBody>
 					<AlertDialogDescription asChild>
 						<div className="flex flex-col gap-3">
-							<p>Cline requires git to manage worktrees for tasks. This folder is not a git repository yet.</p>
+							<p>Shuvban requires git to manage worktrees for tasks. This folder is not a git repository yet.</p>
 							{pendingGitInitializationPath ? (
 								<p className="font-mono text-xs text-text-secondary break-all">
 									{pendingGitInitializationPath}

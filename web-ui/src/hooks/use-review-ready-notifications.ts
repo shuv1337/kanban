@@ -11,7 +11,7 @@ import { getBrowserNotificationPermission } from "@/utils/notification-permissio
 import { useDocumentTitle, useInterval, useUnmount, useWindowEvent } from "@/utils/react-use";
 import {
 	createTabPresenceId,
-	hasVisibleKanbanTabForWorkspace,
+	hasVisibleShuvbanTabForWorkspace,
 	markTabHidden,
 	markTabVisible,
 } from "@/utils/tab-visibility-presence";
@@ -166,7 +166,7 @@ export function useReviewReadyNotifications({
 		}
 		const isVisibleNow = isDocumentCurrentlyVisible(isDocumentVisible);
 		const isWindowFocusedNow = typeof document === "undefined" ? isWindowFocused : document.hasFocus();
-		const hasVisiblePeerTabForWorkspace = hasVisibleKanbanTabForWorkspace(
+		const hasVisiblePeerTabForWorkspace = hasVisibleShuvbanTabForWorkspace(
 			latestTaskReadyForReview.workspaceId,
 			notificationPresenceTabIdRef.current,
 		);
@@ -230,7 +230,7 @@ export function useReviewReadyNotifications({
 		setPendingReviewReadyNotificationCount(0);
 	}, [activeWorkspaceId]);
 
-	const baseTitle = workspaceTitle || "cline";
+	const baseTitle = workspaceTitle || "Shuvban";
 	const documentTitle =
 		pendingReviewReadyNotificationCount > 0 ? `(${pendingReviewReadyNotificationCount}) ${baseTitle}` : baseTitle;
 	useDocumentTitle(documentTitle);

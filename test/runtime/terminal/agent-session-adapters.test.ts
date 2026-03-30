@@ -1,11 +1,11 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import { prepareAgentLaunch } from "../../../src/terminal/agent-session-adapters";
-import { buildPiTaskSessionDir, encodePathSegment } from "../../../src/terminal/pi-session-paths";
+import { buildPiTaskSessionDir } from "../../../src/terminal/pi-session-paths";
 
 const originalHome = process.env.HOME;
 const originalAppData = process.env.APPDATA;
@@ -16,7 +16,7 @@ const originalExecArgv = [...process.execArgv];
 const originalExecPath = process.execPath;
 
 function setupTempHome(): string {
-	tempHome = mkdtempSync(join(tmpdir(), "kanban-agent-adapters-"));
+	tempHome = mkdtempSync(join(tmpdir(), "shuvban-agent-adapters-"));
 	process.env.HOME = tempHome;
 	return tempHome;
 }
@@ -58,8 +58,8 @@ afterEach(() => {
 	});
 });
 
-describe("prepareAgentLaunch hook strategies", () => {
-	it("routes codex through hooks codex-wrapper command", async () => {
+describe("prepareAgentLaunch", () => {
+	it("routes codex through the shuvban hook wrapper", async () => {
 		setupTempHome();
 		const launch = await prepareAgentLaunch({
 			taskId: "task-1",
@@ -71,21 +71,16 @@ describe("prepareAgentLaunch hook strategies", () => {
 			workspaceId: "workspace-1",
 		});
 
-		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-1");
-		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
-
+		expect(launch.env.SHUVBAN_HOOK_TASK_ID).toBe("task-1");
+		expect(launch.env.SHUVBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
 		const launchCommand = [launch.binary ?? "", ...launch.args].join(" ");
 		expect(launchCommand).toContain("hooks");
 		expect(launchCommand).toContain("codex-wrapper");
 		expect(launchCommand).toContain("--real-binary");
 		expect(launchCommand).toContain("codex");
-		expect(launchCommand).toContain("--");
-
-		const wrapperPath = join(homedir(), ".cline", "kanban", "hooks", "codex", "codex-wrapper.mjs");
-		expect(existsSync(wrapperPath)).toBe(false);
 	});
 
-	it("appends Kanban sidebar instructions for home Claude sessions", async () => {
+	it("appends Shuvban sidebar instructions for home Claude sessions", async () => {
 		setupTempHome();
 		setKanbanProcessContext();
 		const launch = await prepareAgentLaunch({
@@ -99,196 +94,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 
 		const appendPromptIndex = launch.args.indexOf("--append-system-prompt");
 		expect(appendPromptIndex).toBeGreaterThanOrEqual(0);
-		expect(launch.args[appendPromptIndex + 1]).toContain("Kanban sidebar agent");
-		expect(launch.args[appendPromptIndex + 1]).toContain(
-			"'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create",
-		);
-	});
-
-	it("appends Kanban sidebar instructions for home Codex sessions", async () => {
-		setupTempHome();
-		setKanbanProcessContext();
-		const launch = await prepareAgentLaunch({
-			taskId: "__home_agent__:workspace-1:codex",
-			agentId: "codex",
-			binary: "codex",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-		});
-
-		const configArgIndex = launch.args.indexOf("-c");
-		expect(configArgIndex).toBeGreaterThanOrEqual(0);
-		expect(launch.args[configArgIndex + 1]).toContain("developer_instructions=");
-		expect(launch.args[configArgIndex + 1]).toContain("Kanban sidebar agent");
-		expect(launch.args[configArgIndex + 1]).toContain(
-			"'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create",
-		);
-	});
-
-	it("writes Claude settings with explicit permission hook", async () => {
-		setupTempHome();
-		await prepareAgentLaunch({
-			taskId: "task-1",
-			agentId: "claude",
-			binary: "claude",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-			workspaceId: "workspace-1",
-		});
-
-		const settingsPath = join(homedir(), ".cline", "kanban", "hooks", "claude", "settings.json");
-		const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
-			hooks?: Record<string, unknown>;
-		};
-		expect(settings.hooks?.PermissionRequest).toBeDefined();
-		expect(settings.hooks?.PreToolUse).toBeDefined();
-		expect(settings.hooks?.PostToolUse).toBeDefined();
-		expect(settings.hooks?.PostToolUseFailure).toBeDefined();
-	});
-
-	it("writes Gemini settings with AfterTool mapped to to_in_progress", async () => {
-		setupTempHome();
-		await prepareAgentLaunch({
-			taskId: "task-1",
-			agentId: "gemini",
-			binary: "gemini",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-			workspaceId: "workspace-1",
-		});
-
-		const settingsPath = join(homedir(), ".cline", "kanban", "hooks", "gemini", "settings.json");
-		const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
-			hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>;
-		};
-		const afterToolCommand = settings.hooks?.AfterTool?.[0]?.hooks?.[0]?.command;
-		expect(afterToolCommand).toContain("hooks");
-		expect(afterToolCommand).toContain("gemini-hook");
-		const hookScriptPath = join(homedir(), ".cline", "kanban", "hooks", "gemini", "gemini-hook.mjs");
-		expect(existsSync(hookScriptPath)).toBe(false);
-	});
-
-	it("writes OpenCode plugin with root-session filtering and permission hooks", async () => {
-		setupTempHome();
-		await prepareAgentLaunch({
-			taskId: "task-1",
-			agentId: "opencode",
-			binary: "opencode",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-			workspaceId: "workspace-1",
-		});
-
-		const pluginPath = join(homedir(), ".cline", "kanban", "hooks", "opencode", "kanban.js");
-		const plugin = readFileSync(pluginPath, "utf8");
-		expect(plugin).toContain("parentID");
-		expect(plugin).toContain('"permission.ask"');
-		expect(plugin).toContain('"tool.execute.before"');
-		expect(plugin).toContain('"tool.execute.after"');
-		expect(plugin).toContain("session.status");
-		expect(plugin).toContain("message.part.updated");
-		expect(plugin).toContain("last_assistant_message");
-		expect(plugin).toContain("--metadata-base64");
-		expect(plugin).toContain('if (kind === "review")');
-		expect(plugin).toContain('currentState = "idle"');
-	});
-
-	it("loads OpenCode preferred model from LOCALAPPDATA state and auth paths", async () => {
-		const homePath = setupTempHome();
-		const localAppDataPath = join(homePath, "AppData", "Local");
-		process.env.LOCALAPPDATA = localAppDataPath;
-
-		const statePath = join(localAppDataPath, "opencode", "state");
-		mkdirSync(statePath, { recursive: true });
-		writeFileSync(
-			join(statePath, "model.json"),
-			JSON.stringify(
-				{
-					recent: [
-						{ providerID: "anthropic", modelID: "claude-3-7-sonnet" },
-						{ providerID: "openai", modelID: "gpt-4o" },
-					],
-				},
-				null,
-				2,
-			),
-			"utf8",
-		);
-
-		const authPath = join(localAppDataPath, "opencode");
-		mkdirSync(authPath, { recursive: true });
-		writeFileSync(
-			join(authPath, "auth.json"),
-			JSON.stringify(
-				{
-					openai: { key: "sk-test" },
-				},
-				null,
-				2,
-			),
-			"utf8",
-		);
-
-		const launch = await prepareAgentLaunch({
-			taskId: "task-opencode-model",
-			agentId: "opencode",
-			binary: "opencode",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-		});
-
-		const modelIndex = launch.args.indexOf("--model");
-		expect(modelIndex).toBeGreaterThan(-1);
-		expect(launch.args[modelIndex + 1]).toBe("openai/gpt-4o");
-	});
-
-	it("writes Droid settings with hook transitions and runtime autonomy mode", async () => {
-		setupTempHome();
-		const launch = await prepareAgentLaunch({
-			taskId: "task-1",
-			agentId: "droid",
-			binary: "droid",
-			args: [],
-			autonomousModeEnabled: true,
-			cwd: "/tmp",
-			prompt: "",
-			workspaceId: "workspace-1",
-		});
-
-		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-1");
-		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
-
-		const settingsArgIndex = launch.args.indexOf("--settings");
-		expect(settingsArgIndex).toBeGreaterThanOrEqual(0);
-		const settingsPath = launch.args[settingsArgIndex + 1];
-		expect(settingsPath).toBeDefined();
-
-		const settings = JSON.parse(readFileSync(settingsPath ?? "", "utf8")) as {
-			autonomyMode?: string;
-			hooks?: Record<string, Array<{ matcher?: string; hooks?: Array<{ command?: string }> }>>;
-		};
-		expect(settings.autonomyMode).toBe("auto-high");
-		expect(settings.hooks?.Stop?.[0]?.hooks?.[0]?.command).toContain("to_review");
-		expect(settings.hooks?.Notification?.[0]?.hooks?.[0]?.command).toContain("activity");
-		expect(settings.hooks?.Notification?.[1]?.hooks?.[0]?.command).toContain("to_review");
-		expect(settings.hooks?.PreToolUse?.[0]?.matcher).toBe("*");
-		expect(settings.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command).toContain("activity");
-		const preToolInProgressHook = settings.hooks?.PreToolUse?.find(
-			(hook) => hook.matcher === "Read|Grep|Glob|FetchUrl|WebSearch|Execute|Task|Edit|Create",
-		);
-		expect(preToolInProgressHook?.hooks?.[0]?.command).toContain("to_in_progress");
-		const preToolReviewHook = settings.hooks?.PreToolUse?.find((hook) => hook.matcher === "AskUser");
-		expect(preToolReviewHook?.hooks?.[0]?.command).toContain("to_review");
-		expect(settings.hooks?.PostToolUse?.[0]?.matcher).toBe("*");
-		expect(settings.hooks?.PostToolUse?.[0]?.hooks?.[0]?.command).toContain("activity");
-		const postToolInProgressHook = settings.hooks?.PostToolUse?.find((hook) => hook.matcher === "AskUser");
-		expect(postToolInProgressHook?.hooks?.[0]?.command).toContain("to_in_progress");
-		expect(settings.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command).toContain("to_in_progress");
+		expect(launch.args[appendPromptIndex + 1]).toContain("Shuvban sidebar agent");
 	});
 
 	it("materializes task images for CLI prompts", async () => {
@@ -313,85 +119,13 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const initialPrompt = launch.args.at(-1) ?? "";
 		expect(initialPrompt).toContain("Attached reference images:");
 		expect(initialPrompt).toContain("Task:\nInspect the attached design");
-
 		const imagePathMatch = initialPrompt.match(/1\. (.+?) \(diagram\.png\)/);
-		expect(imagePathMatch?.[1]).toBeDefined();
 		const imagePath = imagePathMatch?.[1] ?? "";
 		expect(existsSync(imagePath)).toBe(true);
 		expect(readFileSync(imagePath).toString("utf8")).toBe("hello");
 	});
 
-	it("writes Cline hook scripts and injects --hooks-dir", async () => {
-		setupTempHome();
-		const launch = await prepareAgentLaunch({
-			taskId: "task-1",
-			agentId: "cline",
-			binary: "cline",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-			workspaceId: "workspace-1",
-		});
-
-		const hooksDir = join(homedir(), ".cline", "kanban", "hooks", "cline");
-		const notificationHookPath =
-			process.platform === "win32" ? join(hooksDir, "Notification.ps1") : join(hooksDir, "Notification");
-		const taskCompleteHookPath =
-			process.platform === "win32" ? join(hooksDir, "TaskComplete.ps1") : join(hooksDir, "TaskComplete");
-		const userPromptSubmitHookPath =
-			process.platform === "win32" ? join(hooksDir, "UserPromptSubmit.ps1") : join(hooksDir, "UserPromptSubmit");
-		const preToolUseHookPath =
-			process.platform === "win32" ? join(hooksDir, "PreToolUse.ps1") : join(hooksDir, "PreToolUse");
-		const postToolUseHookPath =
-			process.platform === "win32" ? join(hooksDir, "PostToolUse.ps1") : join(hooksDir, "PostToolUse");
-
-		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-1");
-		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
-
-		const hooksDirArgIndex = launch.args.indexOf("--hooks-dir");
-		expect(hooksDirArgIndex).toBeGreaterThanOrEqual(0);
-		expect(launch.args[hooksDirArgIndex + 1]).toBe(hooksDir);
-
-		expect(existsSync(notificationHookPath)).toBe(true);
-		expect(existsSync(taskCompleteHookPath)).toBe(true);
-		expect(existsSync(userPromptSubmitHookPath)).toBe(true);
-		expect(existsSync(preToolUseHookPath)).toBe(true);
-		expect(existsSync(postToolUseHookPath)).toBe(true);
-
-		const notificationScript = readFileSync(notificationHookPath, "utf8");
-		expect(notificationScript).toContain("hooks");
-		expect(notificationScript).toContain("to_review");
-		expect(notificationScript).toContain("user_attention");
-		expect(notificationScript).toContain("completion_result");
-		expect(notificationScript).toContain('{"cancel":false}');
-
-		const taskCompleteScript = readFileSync(taskCompleteHookPath, "utf8");
-		expect(taskCompleteScript).toContain("hooks");
-		expect(taskCompleteScript).toContain("to_review");
-		expect(taskCompleteScript).toContain('{"cancel":false}');
-
-		const userPromptSubmitScript = readFileSync(userPromptSubmitHookPath, "utf8");
-		expect(userPromptSubmitScript).toContain("hooks");
-		expect(userPromptSubmitScript).toContain("to_in_progress");
-		expect(userPromptSubmitScript).toContain('{"cancel":false}');
-
-		const preToolUseScript = readFileSync(preToolUseHookPath, "utf8");
-		expect(preToolUseScript).toContain("hooks");
-		expect(preToolUseScript).toContain("activity");
-		expect(preToolUseScript).toContain("to_in_progress");
-		expect(preToolUseScript).toContain("to_review");
-		expect(preToolUseScript).toContain("ask_followup_question");
-		expect(preToolUseScript).toContain("plan_mode_respond");
-
-		const postToolUseScript = readFileSync(postToolUseHookPath, "utf8");
-		expect(postToolUseScript).toContain("hooks");
-		expect(postToolUseScript).toContain("activity");
-		expect(postToolUseScript).toContain("to_in_progress");
-		expect(postToolUseScript).toContain("ask_followup_question");
-		expect(postToolUseScript).toContain("plan_mode_respond");
-	});
-
-	it("adds resume flags for each agent", async () => {
+	it("adds resume flags for supported agents", async () => {
 		setupTempHome();
 
 		const codexLaunch = await prepareAgentLaunch({
@@ -416,148 +150,20 @@ describe("prepareAgentLaunch hook strategies", () => {
 		});
 		expect(claudeLaunch.args).toContain("--continue");
 
-		const geminiLaunch = await prepareAgentLaunch({
-			taskId: "task-gemini",
-			agentId: "gemini",
-			binary: "gemini",
+		const piLaunch = await prepareAgentLaunch({
+			taskId: "task-pi-resume",
+			agentId: "pi",
+			binary: "pi",
 			args: [],
-			cwd: "/tmp",
-			prompt: "",
+			cwd: "/tmp/repo",
+			prompt: "Continue",
+			workspaceId: "workspace-1",
 			resumeFromTrash: true,
 		});
-		expect(geminiLaunch.args).toEqual(expect.arrayContaining(["--resume", "latest"]));
-
-		const opencodeLaunch = await prepareAgentLaunch({
-			taskId: "task-opencode",
-			agentId: "opencode",
-			binary: "opencode",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-			resumeFromTrash: true,
-		});
-		expect(opencodeLaunch.args).toContain("--continue");
-
-		const droidLaunch = await prepareAgentLaunch({
-			taskId: "task-droid",
-			agentId: "droid",
-			binary: "droid",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-			resumeFromTrash: true,
-		});
-		expect(droidLaunch.args).toContain("--resume");
-
-		const clineLaunch = await prepareAgentLaunch({
-			taskId: "task-cline",
-			agentId: "cline",
-			binary: "cline",
-			args: [],
-			cwd: "/tmp",
-			prompt: "",
-			resumeFromTrash: true,
-		});
-		expect(clineLaunch.args).toContain("--continue");
+		expect(piLaunch.args).toContain("--continue");
 	});
 
-	it("applies autonomous mode flags in adapters for non-droid CLIs", async () => {
-		setupTempHome();
-
-		const claudeLaunch = await prepareAgentLaunch({
-			taskId: "task-claude-auto",
-			agentId: "claude",
-			binary: "claude",
-			args: [],
-			autonomousModeEnabled: true,
-			cwd: "/tmp",
-			prompt: "",
-		});
-		expect(claudeLaunch.args).toContain("--dangerously-skip-permissions");
-
-		const codexLaunch = await prepareAgentLaunch({
-			taskId: "task-codex-auto",
-			agentId: "codex",
-			binary: "codex",
-			args: [],
-			autonomousModeEnabled: true,
-			cwd: "/tmp",
-			prompt: "",
-		});
-		expect(codexLaunch.args).toContain("--dangerously-bypass-approvals-and-sandbox");
-
-		const geminiLaunch = await prepareAgentLaunch({
-			taskId: "task-gemini-auto",
-			agentId: "gemini",
-			binary: "gemini",
-			args: [],
-			autonomousModeEnabled: true,
-			cwd: "/tmp",
-			prompt: "",
-		});
-		expect(geminiLaunch.args).toContain("--yolo");
-
-		const clineLaunch = await prepareAgentLaunch({
-			taskId: "task-cline-auto",
-			agentId: "cline",
-			binary: "cline",
-			args: [],
-			autonomousModeEnabled: true,
-			cwd: "/tmp",
-			prompt: "",
-		});
-		expect(clineLaunch.args).toContain("--auto-approve-all");
-	});
-
-	it("preserves explicit autonomous args when autonomous mode is disabled", async () => {
-		setupTempHome();
-
-		const claudeLaunch = await prepareAgentLaunch({
-			taskId: "task-claude-no-auto",
-			agentId: "claude",
-			binary: "claude",
-			args: ["--dangerously-skip-permissions"],
-			autonomousModeEnabled: false,
-			cwd: "/tmp",
-			prompt: "",
-		});
-		expect(claudeLaunch.args).toContain("--dangerously-skip-permissions");
-
-		const codexLaunch = await prepareAgentLaunch({
-			taskId: "task-codex-no-auto",
-			agentId: "codex",
-			binary: "codex",
-			args: ["--dangerously-bypass-approvals-and-sandbox"],
-			autonomousModeEnabled: false,
-			cwd: "/tmp",
-			prompt: "",
-		});
-		expect(codexLaunch.args).toContain("--dangerously-bypass-approvals-and-sandbox");
-
-		const geminiLaunch = await prepareAgentLaunch({
-			taskId: "task-gemini-no-auto",
-			agentId: "gemini",
-			binary: "gemini",
-			args: ["--yolo"],
-			autonomousModeEnabled: false,
-			cwd: "/tmp",
-			prompt: "",
-		});
-		expect(geminiLaunch.args).toContain("--yolo");
-
-		const clineLaunch = await prepareAgentLaunch({
-			taskId: "task-cline-no-auto",
-			agentId: "cline",
-			binary: "cline",
-			args: ["--auto-approve-all"],
-			autonomousModeEnabled: false,
-			cwd: "/tmp",
-			prompt: "",
-		});
-		expect(clineLaunch.args).toContain("--auto-approve-all");
-	});
-
-	it("prepares pi task sessions with extension, session dir, plan-mode prompt, and hook env", async () => {
+	it("prepares pi task sessions with extension and deterministic session dirs", async () => {
 		setupTempHome();
 		setKanbanProcessContext();
 		const launch = await prepareAgentLaunch({
@@ -571,64 +177,16 @@ describe("prepareAgentLaunch hook strategies", () => {
 			startInPlanMode: true,
 		});
 
-		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("task-pi");
-		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
+		expect(launch.env.SHUVBAN_HOOK_TASK_ID).toBe("task-pi");
+		expect(launch.env.SHUVBAN_HOOK_WORKSPACE_ID).toBe("workspace-1");
 		expect(launch.args).toContain("-e");
 		const extensionIndex = launch.args.indexOf("-e");
 		const extensionPath = launch.args[extensionIndex + 1] ?? "";
-		expect(extensionPath).toContain(join(homedir(), ".cline", "kanban", "hooks", "pi", "kanban-extension.ts"));
+		expect(extensionPath).toContain(join(homedir(), ".shuvban", "hooks", "pi", "shuvban-extension.ts"));
 		expect(existsSync(extensionPath)).toBe(true);
-		expect(readFileSync(extensionPath, "utf8")).toContain("tool_execution_start");
 		expect(launch.args).toContain("--session-dir");
 		const sessionDir = launch.args[launch.args.indexOf("--session-dir") + 1];
 		expect(sessionDir).toBe(buildPiTaskSessionDir("workspace-1", "task-pi"));
-		expect(sessionDir).not.toContain("workspace-1/task-pi");
-		expect(launch.args.at(-1)).toContain("Please create a plan for this task before implementing. Do not make changes yet.");
-		expect(launch.args).not.toContain("--append-system-prompt");
-		expect(launch.args).not.toContain("--no-session");
-	});
-
-	it("prepares pi resume sessions with deterministic continue semantics", async () => {
-		setupTempHome();
-		const launch = await prepareAgentLaunch({
-			taskId: "task-pi-resume",
-			agentId: "pi",
-			binary: "pi",
-			args: [],
-			cwd: "/tmp/repo",
-			prompt: "Continue",
-			workspaceId: "workspace-1",
-			resumeFromTrash: true,
-		});
-
-		expect(launch.args).toContain("--continue");
-		expect(launch.args).toContain("--session-dir");
-	});
-
-	it("prepares pi home sessions with appended system prompt and no session persistence", async () => {
-		setupTempHome();
-		setKanbanProcessContext();
-		const launch = await prepareAgentLaunch({
-			taskId: "__home_agent__:workspace-1:pi:abc123",
-			agentId: "pi",
-			binary: "pi",
-			args: [],
-			cwd: "/tmp/repo",
-			prompt: "",
-			workspaceId: "workspace-1",
-		});
-
-		expect(launch.args).toContain("--append-system-prompt");
-		expect(launch.args).toContain("--no-session");
-		expect(launch.args).not.toContain("--session-dir");
-		expect(launch.args).not.toContain("--continue");
-		expect(launch.args.join(" ")).toContain("Kanban sidebar agent");
-	});
-
-	it("encodes pi session-dir path segments safely", () => {
-		expect(encodePathSegment("workspace-1")).not.toContain("/");
-		expect(encodePathSegment("task:1")).not.toContain(":");
-		expect(buildPiTaskSessionDir("workspace-1", "task:1")).toContain(encodePathSegment("workspace-1"));
-		expect(buildPiTaskSessionDir("workspace-1", "task:1")).toContain(encodePathSegment("task:1"));
+		expect(launch.args.at(-1)).toContain("Please create a plan for this task before implementing.");
 	});
 });

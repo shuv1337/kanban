@@ -48,7 +48,7 @@ vi.mock("../../src/state/workspace-state.js", () => ({
 
 vi.mock("../../src/workspace/task-worktree-path.js", () => ({
 	getWorkspaceFolderLabelForWorktreePath: taskWorktreePathMocks.getWorkspaceFolderLabelForWorktreePath,
-	KANBAN_TASK_WORKTREES_DIR_NAME: "worktrees",
+	SHUVBAN_TASK_WORKTREES_DIR_NAME: "worktrees",
 	normalizeTaskIdForWorktreePath: taskWorktreePathMocks.normalizeTaskIdForWorktreePath,
 }));
 
@@ -123,7 +123,7 @@ describe.sequential("task-worktree serialization", () => {
 	});
 
 	it("serializes submodule initialization across concurrent worktree creation", async () => {
-		const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-lock-");
+		const { path: sandboxRoot, cleanup } = createTempDir("shuvban-task-worktree-lock-");
 		try {
 			const repoPath = join(sandboxRoot, "repo");
 			const runtimeHomePath = join(sandboxRoot, "runtime-home");
@@ -182,7 +182,7 @@ describe.sequential("task-worktree serialization", () => {
 						mkdirSync(worktreePath, { recursive: true });
 						writeFileSync(
 							join(worktreePath, ".gitmodules"),
-							'[submodule "evals/cline-bench"]\n\tpath = evals/cline-bench\n\turl = ../cline-bench\n',
+							'[submodule "evals/agent-bench"]\n\tpath = evals/agent-bench\n\turl = ../agent-bench\n',
 							"utf8",
 						);
 						worktreeHeads.set(worktreePath, commit);
@@ -194,7 +194,7 @@ describe.sequential("task-worktree serialization", () => {
 
 					if (command[0] === "config" && command[1] === "--file") {
 						return {
-							stdout: "submodule.evals/cline-bench.path evals/cline-bench\n",
+							stdout: "submodule.evals/agent-bench.path evals/agent-bench\n",
 							stderr: "",
 						};
 					}
@@ -205,8 +205,8 @@ describe.sequential("task-worktree serialization", () => {
 						await new Promise((resolve) => {
 							setTimeout(resolve, 25);
 						});
-						mkdirSync(join(cwd, "evals", "cline-bench"), { recursive: true });
-						writeFileSync(join(cwd, "evals", "cline-bench", ".git"), "gitdir: fake\n", "utf8");
+						mkdirSync(join(cwd, "evals", "agent-bench"), { recursive: true });
+						writeFileSync(join(cwd, "evals", "agent-bench", ".git"), "gitdir: fake\n", "utf8");
 						activeSubmoduleUpdates -= 1;
 						return {
 							stdout: "",
@@ -255,7 +255,7 @@ describe.sequential("task-worktree serialization", () => {
 			expect(firstLockRequest).toMatchObject({
 				path: join(repoPath, ".git"),
 				type: "directory",
-				lockfileName: "kanban-task-worktree-setup.lock",
+				lockfileName: "shuvban-task-worktree-setup.lock",
 			});
 			expect(maxConcurrentSubmoduleUpdates).toBe(1);
 		} finally {

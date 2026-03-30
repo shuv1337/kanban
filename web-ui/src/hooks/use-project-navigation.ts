@@ -14,7 +14,7 @@ const DIRECTORY_PICKER_UNAVAILABLE_MARKERS = [
 	'command "osascript" is not available',
 ] as const;
 const MANUAL_PROJECT_PATH_PROMPT_MESSAGE =
-	"Kanban could not open a directory picker on this runtime. Enter a project path to add:";
+	"Shuvban could not open a directory picker on this runtime. Enter a project path to add:";
 
 export function parseRemovedProjectPathFromStreamError(streamError: string | null): string | null {
 	if (!streamError || !streamError.startsWith(REMOVED_PROJECT_ERROR_PREFIX)) {
@@ -60,11 +60,7 @@ export interface UseProjectNavigationResult {
 	projects: ReturnType<typeof useRuntimeStateStream>["projects"];
 	workspaceState: ReturnType<typeof useRuntimeStateStream>["workspaceState"];
 	workspaceMetadata: ReturnType<typeof useRuntimeStateStream>["workspaceMetadata"];
-	latestTaskChatMessage: ReturnType<typeof useRuntimeStateStream>["latestTaskChatMessage"];
-	taskChatMessagesByTaskId: ReturnType<typeof useRuntimeStateStream>["taskChatMessagesByTaskId"];
 	latestTaskReadyForReview: ReturnType<typeof useRuntimeStateStream>["latestTaskReadyForReview"];
-	latestMcpAuthStatuses: ReturnType<typeof useRuntimeStateStream>["latestMcpAuthStatuses"];
-	clineSessionContextVersion: ReturnType<typeof useRuntimeStateStream>["clineSessionContextVersion"];
 	streamError: string | null;
 	isRuntimeDisconnected: boolean;
 	hasReceivedSnapshot: boolean;
@@ -95,11 +91,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		projects,
 		workspaceState,
 		workspaceMetadata,
-		latestTaskChatMessage,
-		taskChatMessagesByTaskId,
 		latestTaskReadyForReview,
-		latestMcpAuthStatuses,
-		clineSessionContextVersion,
 		streamError,
 		isRuntimeDisconnected,
 		hasReceivedSnapshot,
@@ -314,11 +306,7 @@ export function useProjectNavigation({ onProjectSwitchStart }: UseProjectNavigat
 		projects,
 		workspaceState,
 		workspaceMetadata,
-		latestTaskChatMessage,
-		taskChatMessagesByTaskId,
 		latestTaskReadyForReview,
-		latestMcpAuthStatuses,
-		clineSessionContextVersion,
 		streamError,
 		isRuntimeDisconnected,
 		hasReceivedSnapshot,

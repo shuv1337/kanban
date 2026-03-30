@@ -4,7 +4,7 @@
  * This test runs against a live `pi` CLI installation and requires:
  * - `pi` installed and available on PATH
  * - Valid auth/credentials for pi providers
- * - Environment variable: KANBAN_REAL_PI_E2E=1
+ * - Environment variable: SHUVBAN_REAL_PI_E2E=1
  *
  * The test creates a temporary runtime server and runs a real pi task
  * to verify the complete hook lifecycle from launch → review.
@@ -15,11 +15,11 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { RuntimeTaskSessionSummary } from "../../src/core/api-contract.js";
-import { setKanbanRuntimePort } from "../../src/core/runtime-endpoint.js";
+import { setShuvbanRuntimePort } from "../../src/core/runtime-endpoint.js";
 import { createHooksApi } from "../../src/trpc/hooks-api.js";
 
 // Skip all tests unless explicitly enabled
-const RUN_REAL_PI_E2E = process.env.KANBAN_REAL_PI_E2E === "1";
+const RUN_REAL_PI_E2E = process.env.SHUVBAN_REAL_PI_E2E === "1";
 
 describe.skipIf(!RUN_REAL_PI_E2E)("pi live completion e2e", () => {
 	let tempDir: string;
@@ -29,7 +29,7 @@ describe.skipIf(!RUN_REAL_PI_E2E)("pi live completion e2e", () => {
 
 	beforeAll(async () => {
 		// Create temp workspace
-		tempDir = join(tmpdir(), `kanban-pi-e2e-${Date.now()}`);
+		tempDir = join(tmpdir(), `shuvban-pi-e2e-${Date.now()}`);
 		workspacePath = join(tempDir, "workspace");
 		mkdirSync(workspacePath, { recursive: true });
 		mkdirSync(join(workspacePath, ".git"), { recursive: true });
@@ -37,7 +37,7 @@ describe.skipIf(!RUN_REAL_PI_E2E)("pi live completion e2e", () => {
 
 		// Pick ephemeral port
 		runtimePort = 34000 + Math.floor(Math.random() * 1000);
-		setKanbanRuntimePort(runtimePort);
+		setShuvbanRuntimePort(runtimePort);
 
 		// Give time for any port binding
 		await new Promise((resolve) => setTimeout(resolve, 100));
@@ -130,7 +130,10 @@ describe.skipIf(!RUN_REAL_PI_E2E)("pi live completion e2e", () => {
 		// Create hooks API with mocked dependencies
 		const api = createHooksApi({
 			getWorkspacePathById: () => workspacePath,
-			ensureTerminalManagerForWorkspace: async () => manager as ReturnType<typeof createHooksApi>["ingest"] extends (...args: unknown[]) => unknown ? unknown : never,
+			ensureTerminalManagerForWorkspace: async () =>
+				manager as ReturnType<typeof createHooksApi>["ingest"] extends (...args: unknown[]) => unknown
+					? unknown
+					: never,
 			broadcastRuntimeWorkspaceStateUpdated: () => undefined,
 			broadcastTaskReadyForReview: () => undefined,
 		});
@@ -221,7 +224,7 @@ describe.skipIf(!RUN_REAL_PI_E2E)("pi live completion e2e", () => {
 		expect(extContent).toContain("timeout: 5000");
 	});
 
-	it("hook runtime env includes KANBAN_RUNTIME_PORT and KANBAN_RUNTIME_HOST", async () => {
+	it("hook runtime env includes SHUVBAN_RUNTIME_PORT and SHUVBAN_RUNTIME_HOST", async () => {
 		const { prepareAgentLaunch } = await import("../../src/terminal/agent-session-adapters.js");
 
 		const launch = await prepareAgentLaunch({
@@ -235,12 +238,12 @@ describe.skipIf(!RUN_REAL_PI_E2E)("pi live completion e2e", () => {
 		});
 
 		// Verify all expected env vars are present
-		expect(launch.env.KANBAN_HOOK_TASK_ID).toBe("test-task-env");
-		expect(launch.env.KANBAN_HOOK_WORKSPACE_ID).toBe("test-workspace-env");
-		expect(launch.env.KANBAN_RUNTIME_PORT).toBeDefined();
-		expect(launch.env.KANBAN_RUNTIME_HOST).toBeDefined();
+		expect(launch.env.SHUVBAN_HOOK_TASK_ID).toBe("test-task-env");
+		expect(launch.env.SHUVBAN_HOOK_WORKSPACE_ID).toBe("test-workspace-env");
+		expect(launch.env.SHUVBAN_RUNTIME_PORT).toBeDefined();
+		expect(launch.env.SHUVBAN_RUNTIME_HOST).toBeDefined();
 
 		// Verify port is the expected value
-		expect(launch.env.KANBAN_RUNTIME_PORT).toBe(String(runtimePort));
+		expect(launch.env.SHUVBAN_RUNTIME_PORT).toBe(String(runtimePort));
 	});
 });

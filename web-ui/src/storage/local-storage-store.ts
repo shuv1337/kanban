@@ -1,16 +1,16 @@
 export enum LocalStorageKey {
-	TaskStartInPlanMode = "kanban.task-start-in-plan-mode",
-	TaskAutoReviewEnabled = "kanban.task-auto-review-enabled",
-	TaskAutoReviewMode = "kanban.task-auto-review-mode",
-	TaskCreatePrimaryStartAction = "kanban.task-create-primary-start-action",
-	BottomTerminalPaneHeight = "kanban.bottom-terminal-pane-height",
+	TaskStartInPlanMode = "shuvban.task-start-in-plan-mode",
+	TaskAutoReviewEnabled = "shuvban.task-auto-review-enabled",
+	TaskAutoReviewMode = "shuvban.task-auto-review-mode",
+	TaskCreatePrimaryStartAction = "shuvban.task-create-primary-start-action",
+	BottomTerminalPaneHeight = "shuvban.bottom-terminal-pane-height",
 	ProjectNavigationPanelWidth = "kb-sidebar-width",
-	ProjectNavigationPanelCollapsed = "kanban.project-navigation-panel-collapsed",
-	OnboardingDialogShown = "kanban.onboarding.dialog.shown",
-	NotificationPermissionPrompted = "kanban.notifications.permission-prompted",
-	PreferredOpenTarget = "kanban.preferred-open-target",
-	NotificationBadgeClearEvent = "kanban.notification-badge-clear.v1",
-	TabVisibilityPresence = "kanban.tab-visibility-presence.v1",
+	ProjectNavigationPanelCollapsed = "shuvban.project-navigation-panel-collapsed",
+	OnboardingDialogShown = "shuvban.onboarding.dialog.shown",
+	NotificationPermissionPrompted = "shuvban.notifications.permission-prompted",
+	PreferredOpenTarget = "shuvban.preferred-open-target",
+	NotificationBadgeClearEvent = "shuvban.notification-badge-clear.v1",
+	TabVisibilityPresence = "shuvban.tab-visibility-presence.v1",
 }
 
 function getLocalStorage(): Storage | null {

@@ -1,4 +1,4 @@
-// PTY-backed runtime for non-Cline task sessions and the workspace shell terminal.
+// PTY-backed runtime for task sessions and the workspace shell terminal.
 // It owns process lifecycle, terminal protocol filtering, and summary updates
 // for command-driven agents such as Claude Code, Codex, Gemini, and shell sessions.
 import type {
@@ -9,6 +9,7 @@ import type {
 	RuntimeTaskSessionSummary,
 	RuntimeTaskTurnCheckpoint,
 } from "../core/api-contract";
+import { writeStructuredRuntimeLog } from "../telemetry/runtime-log";
 import {
 	type AgentAdapterLaunchInput,
 	type AgentOutputTransitionDetector,
@@ -31,7 +32,6 @@ import {
 	type TerminalProtocolFilterState,
 } from "./terminal-protocol-filter";
 import type { TerminalSessionListener, TerminalSessionService } from "./terminal-session-service";
-import { writeStructuredRuntimeLog } from "../telemetry/runtime-log";
 import { TerminalStateMirror } from "./terminal-state-mirror";
 
 const MAX_WORKSPACE_TRUST_BUFFER_CHARS = 16_384;
@@ -187,7 +187,7 @@ function buildTerminalEnvironment(
 		...Object.assign({}, ...sources),
 		COLORTERM: "truecolor",
 		TERM: "xterm-256color",
-		TERM_PROGRAM: "kanban",
+		TERM_PROGRAM: "shuvban",
 	};
 }
 
@@ -358,7 +358,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 								const trustConfirmDelayMs = WORKSPACE_TRUST_CONFIRM_DELAY_MS;
 								entry.active.workspaceTrustConfirmTimer = setTimeout(() => {
 									const activeEntry = this.entries.get(request.taskId)?.active;
-									if (!activeEntry || !activeEntry.autoConfirmedWorkspaceTrust) {
+									if (!activeEntry?.autoConfirmedWorkspaceTrust) {
 										return;
 									}
 									activeEntry.session.write("\r");
@@ -672,7 +672,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 		}
 
 		// Preserve agentId so the server can route to the correct agent type
-		// (Cline SDK vs terminal PTY) when a task is restored from trash.
+		// when a task is restored from trash.
 		const summary = updateSummary(entry, {
 			state: "idle",
 			workspacePath: null,
@@ -976,7 +976,7 @@ export class TerminalSessionManager implements TerminalSessionService {
 				const summary = updateSummary(entry, {
 					warningMessage: message,
 				});
-				const output = Buffer.from(`\r\n[kanban] ${message}\r\n`, "utf8");
+				const output = Buffer.from(`\r\n[shuvban] ${message}\r\n`, "utf8");
 				for (const listener of entry.listeners.values()) {
 					listener.onOutput?.(output);
 					listener.onState?.(cloneSummary(summary));

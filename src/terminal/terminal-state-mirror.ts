@@ -29,7 +29,7 @@ export class TerminalStateMirror {
 			scrollback: TERMINAL_SCROLLBACK,
 		});
 		this.terminal.loadAddon(this.serializeAddon);
-		this.terminal.onData((data) => {
+		this.terminal.onData((data: string) => {
 			options.onInputResponse?.(data);
 		});
 	}

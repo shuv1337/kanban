@@ -11,20 +11,20 @@ describe("resolveAppendSystemPromptCommandPrefix", () => {
 		const prefix = resolveAppendSystemPromptCommandPrefix({
 			currentVersion: "0.1.10",
 			cwd: "/Users/example/repo",
-			argv: ["node", "/Users/example/.npm/_npx/593b71878a7c70f2/node_modules/kanban/dist/cli.js"],
+			argv: ["node", "/Users/example/.npm/_npx/593b71878a7c70f2/node_modules/shuvban/dist/cli.js"],
 			resolveRealPath: (path) => path,
 		});
-		expect(prefix).toBe("npx -y kanban");
+		expect(prefix).toBe("npx -y shuvban");
 	});
 
 	it("returns bun x prefix for bun x transient installs", () => {
 		const prefix = resolveAppendSystemPromptCommandPrefix({
 			currentVersion: "0.1.10",
 			cwd: "/Users/example/repo",
-			argv: ["node", "/private/tmp/bunx-501-kanban@1.0.0/node_modules/kanban/dist/cli.js"],
+			argv: ["node", "/private/tmp/bunx-501-shuvban@1.0.0/node_modules/shuvban/dist/cli.js"],
 			resolveRealPath: (path) => path,
 		});
-		expect(prefix).toBe("bun x kanban");
+		expect(prefix).toBe("bun x shuvban");
 	});
 
 	it("falls back to the current runnable invocation for local entrypoints", () => {
@@ -45,26 +45,26 @@ describe("resolveAppendSystemPromptCommandPrefix", () => {
 			cwd: "/Users/example/repo",
 			execPath: "/usr/local/bin/node",
 			execArgv: [],
-			argv: ["node", "/tmp/missing-kanban-cli.js"],
+			argv: ["node", "/tmp/missing-shuvban-cli.js"],
 			resolveRealPath: () => {
 				throw new Error("missing");
 			},
 		});
-		expect(prefix).toBe("'/usr/local/bin/node' '/tmp/missing-kanban-cli.js'");
+		expect(prefix).toBe("'/usr/local/bin/node' '/tmp/missing-shuvban-cli.js'");
 	});
 });
 
 describe("renderAppendSystemPrompt", () => {
-	it("renders Kanban sidebar guidance and command reference", () => {
-		const rendered = renderAppendSystemPrompt("kanban");
-		expect(rendered).toContain("Kanban sidebar agent");
-		expect(rendered).toContain("kanban task create");
-		expect(rendered).toContain("kanban task trash");
-		expect(rendered).toContain("kanban task delete");
+	it("renders Shuvban sidebar guidance and command reference", () => {
+		const rendered = renderAppendSystemPrompt("shuvban");
+		expect(rendered).toContain("Shuvban sidebar agent");
+		expect(rendered).toContain("shuvban task create");
+		expect(rendered).toContain("shuvban task trash");
+		expect(rendered).toContain("shuvban task delete");
 		expect(rendered).toContain("--column backlog|in_progress|review|trash");
 		expect(rendered).toContain("Provide exactly one of");
 		expect(rendered).toContain("task delete --column trash");
-		expect(rendered).toContain("kanban task link");
+		expect(rendered).toContain("shuvban task link");
 		expect(rendered).toContain("If a task command fails because the runtime is unavailable");
 		expect(rendered).toContain("If the user asks for GitHub work");
 		expect(rendered).toContain("gh issue view");
@@ -75,7 +75,7 @@ describe("renderAppendSystemPrompt", () => {
 	});
 
 	it("renders only the active-agent Linear MCP guidance when an agent is provided", () => {
-		const rendered = renderAppendSystemPrompt("kanban", {
+		const rendered = renderAppendSystemPrompt("shuvban", {
 			agentId: "codex",
 		});
 
@@ -86,7 +86,7 @@ describe("renderAppendSystemPrompt", () => {
 	});
 
 	it("renders pi-specific Linear guidance when pi is the home agent", () => {
-		const rendered = renderAppendSystemPrompt("kanban", {
+		const rendered = renderAppendSystemPrompt("shuvban", {
 			agentId: "pi",
 		});
 
@@ -111,7 +111,7 @@ describe("resolveHomeAgentAppendSystemPrompt", () => {
 			argv: ["node", "/Users/example/repo/dist/cli.js"],
 			resolveRealPath: (path) => path,
 		});
-		expect(prompt).toContain("Kanban sidebar agent");
+		expect(prompt).toContain("Shuvban sidebar agent");
 		expect(prompt).toContain("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task list");
 		expect(prompt).toContain("Current home agent: `codex`");
 		expect(prompt).toContain("codex mcp add linear --url https://mcp.linear.app/mcp");

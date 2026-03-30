@@ -188,7 +188,7 @@ async function waitForProcessStart(process: ChildProcess, timeoutMs = 10_000): P
 			} else {
 				stderr += text;
 			}
-			const match = stdout.match(/Cline Kanban running at (http:\/\/127\.0\.0\.1:\d+(?:\/[^\s]*)?)/);
+			const match = stdout.match(/Shuvban running at (http:\/\/127\.0\.0\.1:\d+(?:\/[^\s]*)?)/);
 			if (!match || settled) {
 				return;
 			}
@@ -232,7 +232,7 @@ async function requestGracefulShutdown(childProcess: ChildProcess): Promise<void
 	}
 
 	await new Promise<void>((resolveSend) => {
-		childProcess.send({ type: "kanban.shutdown" }, (error) => {
+		childProcess.send({ type: "shuvban.shutdown" }, (error) => {
 			if (error) {
 				childProcess.kill(getShutdownSignal());
 			}
@@ -259,7 +259,12 @@ async function waitForExit(childProcess: ChildProcess, timeoutMs: number): Promi
 	});
 }
 
-async function startKanbanServer(input: { cwd: string; homeDir: string; port: number; extraArgs?: string[] }): Promise<{
+async function startShuvbanServer(input: {
+	cwd: string;
+	homeDir: string;
+	port: number;
+	extraArgs?: string[];
+}): Promise<{
 	runtimeUrl: string;
 	stop: () => Promise<void>;
 }> {
@@ -282,7 +287,7 @@ async function startKanbanServer(input: { cwd: string; homeDir: string; port: nu
 			env: createGitTestEnv({
 				HOME: input.homeDir,
 				USERPROFILE: input.homeDir,
-				KANBAN_RUNTIME_PORT: String(input.port),
+				SHUVBAN_RUNTIME_PORT: String(input.port),
 			}),
 			stdio: ["ignore", "pipe", "pipe", "ipc"],
 		},
@@ -303,7 +308,7 @@ async function startKanbanServer(input: { cwd: string; homeDir: string; port: nu
 			child.kill("SIGKILL");
 			const didExitAfterForce = await waitForExit(child, 5_000);
 			if (!didExitAfterForce) {
-				throw new Error("Timed out stopping kanban test server process.");
+				throw new Error("Timed out stopping shuvban test server process.");
 			}
 		},
 	};
@@ -423,7 +428,7 @@ async function requestJson<T>(input: {
 	};
 	const headers = new Headers();
 	if (input.workspaceId) {
-		headers.set("x-kanban-workspace-id", input.workspaceId);
+		headers.set("x-shuvban-workspace-id", input.workspaceId);
 	}
 	let url = `${input.baseUrl}/api/trpc/${input.procedure}`;
 	let method: "GET" | "POST";
@@ -454,11 +459,11 @@ async function requestJson<T>(input: {
 
 describe.sequential("runtime state stream integration", () => {
 	it("starts outside a git repository with no active workspace", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-no-git-");
-		const { path: nonGitPath, cleanup: cleanupNonGitPath } = createTempDir("kanban-no-git-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("shuvban-home-no-git-");
+		const { path: nonGitPath, cleanup: cleanupNonGitPath } = createTempDir("shuvban-no-git-");
 
 		const port = await getAvailablePort();
-		const server = await startKanbanServer({
+		const server = await startShuvbanServer({
 			cwd: nonGitPath,
 			homeDir: tempHome,
 			port,
@@ -497,10 +502,10 @@ describe.sequential("runtime state stream integration", () => {
 	}, 30_000);
 
 	it("starts from the home directory with no active workspace", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-home-dir-launch-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("shuvban-home-home-dir-launch-");
 
 		const port = await getAvailablePort();
-		const server = await startKanbanServer({
+		const server = await startShuvbanServer({
 			cwd: tempHome,
 			homeDir: tempHome,
 			port,
@@ -538,8 +543,8 @@ describe.sequential("runtime state stream integration", () => {
 	}, 30_000);
 
 	it("launches outside git using the first indexed project", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-first-project-");
-		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("kanban-first-project-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("shuvban-home-first-project-");
+		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("shuvban-first-project-");
 
 		const projectAPath = join(tempRoot, "project-a");
 		const projectBPath = join(tempRoot, "project-b");
@@ -551,7 +556,7 @@ describe.sequential("runtime state stream integration", () => {
 		initGitRepository(projectBPath);
 
 		const firstPort = await getAvailablePort();
-		const firstServer = await startKanbanServer({
+		const firstServer = await startShuvbanServer({
 			cwd: projectAPath,
 			homeDir: tempHome,
 			port: firstPort,
@@ -579,7 +584,7 @@ describe.sequential("runtime state stream integration", () => {
 		}
 
 		const secondPort = await getAvailablePort();
-		const secondServer = await startKanbanServer({
+		const secondServer = await startShuvbanServer({
 			cwd: nonGitPath,
 			homeDir: tempHome,
 			port: secondPort,
@@ -621,8 +626,8 @@ describe.sequential("runtime state stream integration", () => {
 	}, 45_000);
 
 	it("requires explicit confirmation before initializing git for a non-git added project", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-project-add-git-confirm-");
-		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("kanban-project-add-git-confirm-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("shuvban-home-project-add-git-confirm-");
+		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("shuvban-project-add-git-confirm-");
 
 		const projectAPath = join(tempRoot, "project-a");
 		const nonGitPath = join(tempRoot, "non-git-project");
@@ -631,7 +636,7 @@ describe.sequential("runtime state stream integration", () => {
 		initGitRepository(projectAPath);
 
 		const port = await getAvailablePort();
-		const server = await startKanbanServer({
+		const server = await startShuvbanServer({
 			cwd: projectAPath,
 			homeDir: tempHome,
 			port,
@@ -688,8 +693,8 @@ describe.sequential("runtime state stream integration", () => {
 	}, 45_000);
 
 	it("streams per-project snapshots and isolates workspace updates", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-stream-");
-		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("kanban-projects-stream-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("shuvban-home-stream-");
+		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("shuvban-projects-stream-");
 
 		const projectAPath = join(tempRoot, "project-a");
 		const projectBPath = join(tempRoot, "project-b");
@@ -699,7 +704,7 @@ describe.sequential("runtime state stream integration", () => {
 		initGitRepository(projectBPath);
 
 		const port = await getAvailablePort();
-		const server = await startKanbanServer({
+		const server = await startShuvbanServer({
 			cwd: projectAPath,
 			homeDir: tempHome,
 			port,
@@ -809,14 +814,14 @@ describe.sequential("runtime state stream integration", () => {
 	}, 30_000);
 
 	it("emits task_ready_for_review when hook review event is ingested", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-hook-stream-");
-		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-hook-stream-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("shuvban-home-hook-stream-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("shuvban-project-hook-stream-");
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
 
 		const port = await getAvailablePort();
-		const server = await startKanbanServer({
+		const server = await startShuvbanServer({
 			cwd: projectPath,
 			homeDir: tempHome,
 			port,
@@ -890,8 +895,8 @@ describe.sequential("runtime state stream integration", () => {
 	}, 30_000);
 
 	it("streams centralized workspace metadata updates for task worktrees", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-metadata-stream-");
-		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-metadata-stream-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("shuvban-home-metadata-stream-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("shuvban-project-metadata-stream-");
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
@@ -901,7 +906,7 @@ describe.sequential("runtime state stream integration", () => {
 		commitAll(projectPath, "seed project");
 
 		const port = await getAvailablePort();
-		const server = await startKanbanServer({
+		const server = await startShuvbanServer({
 			cwd: projectPath,
 			homeDir: tempHome,
 			port,
@@ -1014,8 +1019,8 @@ describe.sequential("runtime state stream integration", () => {
 	}, 45_000);
 
 	it("preserves existing task worktree when base ref advances", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-preserve-worktree-");
-		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-preserve-worktree-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("shuvban-home-preserve-worktree-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("shuvban-project-preserve-worktree-");
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
@@ -1026,7 +1031,7 @@ describe.sequential("runtime state stream integration", () => {
 		const baseRef = runGit(projectPath, ["symbolic-ref", "--short", "HEAD"]);
 
 		const port = await getAvailablePort();
-		const server = await startKanbanServer({
+		const server = await startShuvbanServer({
 			cwd: projectPath,
 			homeDir: tempHome,
 			port,
@@ -1131,8 +1136,8 @@ describe.sequential("runtime state stream integration", () => {
 	}, 45_000);
 
 	it("moves stale hook-review cards to trash on shutdown", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-stale-review-");
-		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-stale-review-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("shuvban-home-stale-review-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("shuvban-project-stale-review-");
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
@@ -1143,7 +1148,7 @@ describe.sequential("runtime state stream integration", () => {
 		const now = Date.now();
 
 		const firstPort = await getAvailablePort();
-		const firstServer = await startKanbanServer({
+		const firstServer = await startShuvbanServer({
 			cwd: projectPath,
 			homeDir: tempHome,
 			port: firstPort,
@@ -1194,7 +1199,7 @@ describe.sequential("runtime state stream integration", () => {
 		}
 
 		const secondPort = await getAvailablePort();
-		const secondServer = await startKanbanServer({
+		const secondServer = await startShuvbanServer({
 			cwd: projectPath,
 			homeDir: tempHome,
 			port: secondPort,
@@ -1229,8 +1234,8 @@ describe.sequential("runtime state stream integration", () => {
 	}, 45_000);
 
 	it("moves stale completed review cards to trash on shutdown", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-stale-exit-review-");
-		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-stale-exit-review-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("shuvban-home-stale-exit-review-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("shuvban-project-stale-exit-review-");
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
@@ -1240,7 +1245,7 @@ describe.sequential("runtime state stream integration", () => {
 		const now = Date.now();
 
 		const firstPort = await getAvailablePort();
-		const firstServer = await startKanbanServer({
+		const firstServer = await startShuvbanServer({
 			cwd: projectPath,
 			homeDir: tempHome,
 			port: firstPort,
@@ -1303,7 +1308,7 @@ describe.sequential("runtime state stream integration", () => {
 		}
 
 		const secondPort = await getAvailablePort();
-		const secondServer = await startKanbanServer({
+		const secondServer = await startShuvbanServer({
 			cwd: projectPath,
 			homeDir: tempHome,
 			port: secondPort,
@@ -1348,8 +1353,8 @@ describe.sequential("runtime state stream integration", () => {
 	}, 45_000);
 
 	it("skips stale session shutdown cleanup when --skip-shutdown-cleanup is enabled", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-skip-cleanup-flag-");
-		const { path: projectPath, cleanup: cleanupProject } = createTempDir("kanban-project-skip-cleanup-flag-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("shuvban-home-skip-cleanup-flag-");
+		const { path: projectPath, cleanup: cleanupProject } = createTempDir("shuvban-project-skip-cleanup-flag-");
 
 		mkdirSync(projectPath, { recursive: true });
 		initGitRepository(projectPath);
@@ -1359,7 +1364,7 @@ describe.sequential("runtime state stream integration", () => {
 		const now = Date.now();
 
 		const firstPort = await getAvailablePort();
-		const firstServer = await startKanbanServer({
+		const firstServer = await startShuvbanServer({
 			cwd: projectPath,
 			homeDir: tempHome,
 			port: firstPort,
@@ -1424,7 +1429,7 @@ describe.sequential("runtime state stream integration", () => {
 		}
 
 		const secondPort = await getAvailablePort();
-		const secondServer = await startKanbanServer({
+		const secondServer = await startShuvbanServer({
 			cwd: projectPath,
 			homeDir: tempHome,
 			port: secondPort,
@@ -1470,8 +1475,8 @@ describe.sequential("runtime state stream integration", () => {
 	}, 45_000);
 
 	it("falls back to remaining project when removing the active project", async () => {
-		const { path: tempHome, cleanup: cleanupHome } = createTempDir("kanban-home-remove-");
-		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("kanban-projects-remove-");
+		const { path: tempHome, cleanup: cleanupHome } = createTempDir("shuvban-home-remove-");
+		const { path: tempRoot, cleanup: cleanupRoot } = createTempDir("shuvban-projects-remove-");
 
 		const projectAPath = join(tempRoot, "project-a");
 		const projectBPath = join(tempRoot, "project-b");
@@ -1481,7 +1486,7 @@ describe.sequential("runtime state stream integration", () => {
 		initGitRepository(projectBPath);
 
 		const port = await getAvailablePort();
-		const server = await startKanbanServer({
+		const server = await startShuvbanServer({
 			cwd: projectAPath,
 			homeDir: tempHome,
 			port,

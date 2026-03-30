@@ -12,7 +12,7 @@ import type {
 	RuntimeTerminalWsServerMessage,
 } from "@/runtime/types";
 import { clearTerminalGeometry, reportTerminalGeometry } from "@/terminal/terminal-geometry-registry";
-import { createKanbanTerminalOptions } from "@/terminal/terminal-options";
+import { createShuvbanTerminalOptions } from "@/terminal/terminal-options";
 import {
 	appendTerminalHeuristicText,
 	hasInterruptAcknowledgement,
@@ -177,7 +177,7 @@ class PersistentTerminal {
 		const initialGeometry = estimateTaskSessionGeometry(window.innerWidth, window.innerHeight);
 
 		this.terminal = new Terminal({
-			...createKanbanTerminalOptions({
+			...createShuvbanTerminalOptions({
 				cursorColor: this.appearance.cursorColor,
 				isMacPlatform,
 				terminalBackgroundColor: this.appearance.terminalBackgroundColor,
@@ -447,13 +447,13 @@ class PersistentTerminal {
 			}
 			if (payload.type === "exit") {
 				const label = payload.code == null ? "session exited" : `session exited with code ${payload.code}`;
-				void this.enqueueTerminalWrite(`\r\n[kanban] ${label}\r\n`);
+				void this.enqueueTerminalWrite(`\r\n[shuvban] ${label}\r\n`);
 				return;
 			}
 			if (payload.type === "error") {
 				this.lastError = payload.message;
 				this.notifyLastError();
-				void this.enqueueTerminalWrite(`\r\n[kanban] ${payload.message}\r\n`);
+				void this.enqueueTerminalWrite(`\r\n[shuvban] ${payload.message}\r\n`);
 			}
 		};
 		controlSocket.onerror = () => {
@@ -489,7 +489,7 @@ class PersistentTerminal {
 		this.appearance = appearance;
 		this.terminal.options.theme = {
 			...this.terminal.options.theme,
-			...createKanbanTerminalOptions({
+			...createShuvbanTerminalOptions({
 				cursorColor: appearance.cursorColor,
 				isMacPlatform,
 				terminalBackgroundColor: appearance.terminalBackgroundColor,

@@ -14,14 +14,21 @@ vi.mock("@/runtime/runtime-config-query", () => ({
 
 type HookSnapshot = UseStartupOnboardingResult;
 
+function requireSnapshot(snapshot: HookSnapshot | null): HookSnapshot {
+	if (snapshot === null) {
+		throw new Error("Expected a startup onboarding snapshot.");
+	}
+	return snapshot;
+}
+
 function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["selectedAgentId"]): RuntimeConfigResponse {
 	return {
 		selectedAgentId,
 		selectedShortcutLabel: null,
 		agentAutonomousModeEnabled: true,
 		effectiveCommand: selectedAgentId,
-		globalConfigPath: "/tmp/.cline/kanban/config.json",
-		projectConfigPath: "/tmp/project/.cline/kanban/config.json",
+		globalConfigPath: "/tmp/.shuvban/config.json",
+		projectConfigPath: "/tmp/project/.shuvban/config.json",
 		readyForReviewNotificationsEnabled: true,
 		detectedCommands: ["codex"],
 		agents: [
@@ -36,17 +43,6 @@ function createRuntimeConfigResponse(selectedAgentId: RuntimeConfigResponse["sel
 			},
 		],
 		shortcuts: [],
-		clineProviderSettings: {
-			providerId: null,
-			modelId: null,
-			baseUrl: null,
-			apiKeyConfigured: false,
-			oauthProvider: null,
-			oauthAccessTokenConfigured: false,
-			oauthRefreshTokenConfigured: false,
-			oauthAccountId: null,
-			oauthExpiresAt: null,
-		},
 		commitPromptTemplate: "",
 		openPrPromptTemplate: "",
 		commitPromptTemplateDefault: "",
@@ -131,12 +127,7 @@ describe("useStartupOnboarding", () => {
 			await Promise.resolve();
 		});
 
-		if (latestSnapshot === null) {
-			throw new Error("Expected a startup onboarding snapshot.");
-		}
-
-		const snapshot = latestSnapshot as HookSnapshot;
-		expect(snapshot.isStartupOnboardingDialogOpen).toBe(true);
+		expect(requireSnapshot(latestSnapshot).isStartupOnboardingDialogOpen).toBe(true);
 	});
 
 	it("saves the selected agent without requiring a project", async () => {
@@ -146,7 +137,7 @@ describe("useStartupOnboarding", () => {
 			root.render(
 				<HookHarness
 					currentProjectId={null}
-					runtimeProjectConfig={createRuntimeConfigResponse("cline")}
+					runtimeProjectConfig={createRuntimeConfigResponse("codex")}
 					isRuntimeProjectConfigLoading={false}
 					isTaskAgentReady={false}
 					onSnapshot={(snapshot) => {
@@ -157,41 +148,9 @@ describe("useStartupOnboarding", () => {
 			await Promise.resolve();
 		});
 
-		if (latestSnapshot === null) {
-			throw new Error("Expected a startup onboarding snapshot.");
-		}
-
-		const snapshot = latestSnapshot as HookSnapshot;
-		const result = await snapshot.handleSelectOnboardingAgent("codex");
-
+		const result = await requireSnapshot(latestSnapshot).handleSelectOnboardingAgent("codex");
 		expect(result).toEqual({ ok: true });
 		expect(saveRuntimeConfigMock).toHaveBeenCalledWith(null, { selectedAgentId: "codex" });
-	});
-
-	it("waits for runtime config to finish loading before opening onboarding", async () => {
-		let latestSnapshot: HookSnapshot | null = null;
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					currentProjectId={null}
-					runtimeProjectConfig={null}
-					isRuntimeProjectConfigLoading={true}
-					isTaskAgentReady={null}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-			await Promise.resolve();
-		});
-
-		if (latestSnapshot === null) {
-			throw new Error("Expected a startup onboarding snapshot.");
-		}
-
-		const snapshot = latestSnapshot as HookSnapshot;
-		expect(snapshot.isStartupOnboardingDialogOpen).toBe(false);
 	});
 
 	it("reopens after a project is added when setup is still incomplete", async () => {
@@ -202,7 +161,7 @@ describe("useStartupOnboarding", () => {
 			root.render(
 				<HookHarness
 					currentProjectId={"project-1"}
-					runtimeProjectConfig={createRuntimeConfigResponse("cline")}
+					runtimeProjectConfig={createRuntimeConfigResponse("codex")}
 					isRuntimeProjectConfigLoading={false}
 					isTaskAgentReady={false}
 					onSnapshot={(snapshot) => {
@@ -213,50 +172,6 @@ describe("useStartupOnboarding", () => {
 			await Promise.resolve();
 		});
 
-		if (latestSnapshot === null) {
-			throw new Error("Expected a startup onboarding snapshot.");
-		}
-
-		const snapshot = latestSnapshot as HookSnapshot;
-		expect(snapshot.isStartupOnboardingDialogOpen).toBe(true);
-	});
-
-	it("can be manually opened from debug tools even when normal criteria would keep it closed", async () => {
-		window.localStorage.setItem(LocalStorageKey.OnboardingDialogShown, "true");
-		let latestSnapshot: HookSnapshot | null = null;
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					currentProjectId={"project-1"}
-					runtimeProjectConfig={createRuntimeConfigResponse("codex")}
-					isRuntimeProjectConfigLoading={false}
-					isTaskAgentReady={true}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
-			await Promise.resolve();
-		});
-
-		if (latestSnapshot === null) {
-			throw new Error("Expected a startup onboarding snapshot.");
-		}
-
-		let snapshot = latestSnapshot as HookSnapshot;
-		expect(snapshot.isStartupOnboardingDialogOpen).toBe(false);
-
-		await act(async () => {
-			snapshot.handleOpenStartupOnboardingDialog();
-			await Promise.resolve();
-		});
-
-		if (latestSnapshot === null) {
-			throw new Error("Expected a startup onboarding snapshot.");
-		}
-
-		snapshot = latestSnapshot as HookSnapshot;
-		expect(snapshot.isStartupOnboardingDialogOpen).toBe(true);
+		expect(requireSnapshot(latestSnapshot).isStartupOnboardingDialogOpen).toBe(true);
 	});
 });

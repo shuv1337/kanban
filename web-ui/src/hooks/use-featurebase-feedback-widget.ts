@@ -1,11 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-
-import { fetchClineAccountProfile } from "@/runtime/runtime-config-query";
-import type { RuntimeClineProviderSettings } from "@/runtime/types";
+import { useEffect, useRef } from "react";
 
 const FEATUREBASE_SDK_ID = "featurebase-sdk";
 const FEATUREBASE_SDK_SRC = "https://do.featurebase.app/js/sdk.js";
-const FEATUREBASE_ORGANIZATION = "cline";
+const FEATUREBASE_ORGANIZATION = "shuvban";
 const FEATUREBASE_OPEN_RETRY_DELAY_MS = 50;
 const FEATUREBASE_OPEN_WIDGET_MESSAGE = {
 	target: "FeaturebaseWidget",
@@ -28,12 +25,6 @@ interface FeaturebaseCommand {
 
 interface FeaturebaseWindow extends Window {
 	Featurebase?: FeaturebaseCommand;
-}
-
-interface ClineAccountProfile {
-	accountId: string | null;
-	email: string | null;
-	displayName: string | null;
 }
 
 let featurebaseSdkLoadPromise: Promise<void> | null = null;
@@ -121,77 +112,9 @@ export function openFeaturebaseFeedbackWidget(): void {
 		});
 }
 
-export function useFeaturebaseFeedbackWidget(input: {
-	workspaceId: string | null;
-	clineProviderSettings: RuntimeClineProviderSettings | null;
-}): void {
-	const { workspaceId, clineProviderSettings } = input;
-	const [clineProfile, setClineProfile] = useState<ClineAccountProfile | null>(null);
-	const [isClineProfileResolved, setIsClineProfileResolved] = useState(false);
+export function useFeaturebaseFeedbackWidget(): void {
 	const lastInitializedSignatureRef = useRef<string | null>(null);
-	const isManagedClineOauth =
-		clineProviderSettings?.oauthProvider === "cline" && clineProviderSettings.oauthAccessTokenConfigured;
-
-	useEffect(() => {
-		if (!isManagedClineOauth) {
-			setClineProfile(null);
-			setIsClineProfileResolved(true);
-			return;
-		}
-		let cancelled = false;
-		setIsClineProfileResolved(false);
-		void fetchClineAccountProfile(workspaceId)
-			.then((response) => {
-				if (cancelled) {
-					return;
-				}
-				setClineProfile(response.profile ?? null);
-			})
-			.catch(() => {
-				if (!cancelled) {
-					setClineProfile(null);
-				}
-			})
-			.finally(() => {
-				if (!cancelled) {
-					setIsClineProfileResolved(true);
-				}
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [isManagedClineOauth, workspaceId]);
-
-	const clineAccountId = clineProfile?.accountId ?? clineProviderSettings?.oauthAccountId ?? null;
-	const metadata = useMemo(() => {
-		const nextMetadata: Record<string, string> = {
-			app: "kanban",
-		};
-		if (clineAccountId) {
-			nextMetadata.cline_account_id = clineAccountId;
-		}
-		if (clineProfile?.displayName) {
-			nextMetadata.cline_display_name = clineProfile.displayName;
-		}
-		if (clineProfile?.email) {
-			nextMetadata.cline_email = clineProfile.email;
-		}
-		return nextMetadata;
-	}, [clineAccountId, clineProfile?.displayName, clineProfile?.email]);
-
-	const email = clineProfile?.email ?? undefined;
-	const displayName = clineProfile?.displayName ?? undefined;
-	const shouldIdentifyClineUser = isManagedClineOauth && Boolean(email || clineAccountId);
-	const signature = useMemo(
-		() =>
-			JSON.stringify({
-				email: email ?? null,
-				displayName: displayName ?? null,
-				shouldIdentifyClineUser,
-				metadata,
-			}),
-		[displayName, email, metadata, shouldIdentifyClineUser],
-	);
+	const signature = JSON.stringify({ organization: FEATUREBASE_ORGANIZATION, app: "shuvban" });
 
 	useEffect(() => {
 		const win = window as FeaturebaseWindow;
@@ -205,22 +128,15 @@ export function useFeaturebaseFeedbackWidget(input: {
 				const featurebase = ensureFeaturebaseCommand(win);
 				lastInitializedSignatureRef.current = signature;
 				isFeaturebaseFeedbackWidgetReady = false;
-				if (shouldIdentifyClineUser) {
-					featurebase("identify", {
-						organization: FEATUREBASE_ORGANIZATION,
-						email,
-						name: displayName,
-						userId: clineAccountId ?? undefined,
-					});
-				}
 				featurebase(
 					"initialize_feedback_widget",
 					{
 						organization: FEATUREBASE_ORGANIZATION,
 						theme: "dark",
 						locale: "en",
-						email,
-						metadata,
+						metadata: {
+							app: "shuvban",
+						},
 					},
 					(_error, callback) => {
 						if (callback?.action !== "widgetReady") {
@@ -235,14 +151,5 @@ export function useFeaturebaseFeedbackWidget(input: {
 		return () => {
 			cancelled = true;
 		};
-	}, [
-		clineAccountId,
-		displayName,
-		email,
-		isClineProfileResolved,
-		isManagedClineOauth,
-		metadata,
-		shouldIdentifyClineUser,
-		signature,
-	]);
+	}, [signature]);
 }

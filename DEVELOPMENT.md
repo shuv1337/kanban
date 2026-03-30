@@ -60,14 +60,14 @@ node dist/cli.js --port 3484
 node dist/cli.js --port auto
 ```
 
-You can still use `KANBAN_RUNTIME_PORT` if needed, but `--port` is preferred for local multi-instance runs.
+You can still use `SHUVBAN_RUNTIME_PORT` if needed, but `--port` is preferred for local multi-instance runs.
 
-## Dogfooding with two Kanban instances
+## Dogfooding with two Shuvban instances
 
 Run your stable orchestrator first (main checkout):
 
 ```bash
-cd /path/to/kanban-main
+cd /path/to/shuvban-main
 npm run build
 node dist/cli.js --port 3484
 ```
@@ -75,11 +75,11 @@ node dist/cli.js --port 3484
 Then run a test checkout against a target project (feature worktree):
 
 ```bash
-cd /path/to/kanban-feature-worktree
+cd /path/to/shuvban-feature-worktree
 npm run dogfood -- --project /path/to/target/repo --port auto
 ```
 
-If `--project` is omitted, the launcher starts Kanban from a non-git cwd so runtime behaves like launching outside a git repo and opens the first indexed project (if any):
+If `--project` is omitted, the launcher starts Shuvban from a non-git cwd so runtime behaves like launching outside a git repo and opens the first indexed project (if any):
 
 ```bash
 npm run dogfood -- --port auto
@@ -93,7 +93,7 @@ Dogfood launcher behavior:
 - supports `--no-open`
 - supports `--skip-build` when you already built and want faster restarts
 
-## Run `kanban` from any directory
+## Run `shuvban` from any directory
 
 After cloning and installing dependencies, create/update the global CLI link from this repo:
 
@@ -104,20 +104,20 @@ npm run link
 Verify:
 
 ```bash
-which kanban
-kanban --version
+which shuvban
+shuvban --version
 ```
 
 Then run from any project directory:
 
 ```bash
 cd /path/to/your/project
-kanban
+shuvban
 ```
 
 After local code changes, run `npm run build` again before using the linked command.
 
-When switching between worktrees, re-run `npm run link` from the worktree you want to test so the global `kanban` binary points at the right `dist/cli.js`. For sidebar agent automation guidance, inspect `src/prompts/append-system-prompt.ts`.
+When switching between worktrees, re-run `npm run link` from the worktree you want to test so the global `shuvban` binary points at the right `dist/cli.js`. For sidebar agent automation guidance, inspect `src/prompts/append-system-prompt.ts`.
 
 Remove the global link:
 
@@ -146,7 +146,7 @@ npm run unlink
 
 ## Agent tracking and runtime hooks
 
-Kanban tracks agent session state with runtime hook events. The core transition model is:
+Shuvban tracks agent session state with runtime hook events. The core transition model is:
 
 - `in_progress -> review`
 - `review -> in_progress`
@@ -159,11 +159,11 @@ Internal runtime session states are named `running` and `awaiting_review`, and h
 How it works end to end:
 
 1. `prepareAgentLaunch` wires each agent with hook commands or hook-aware wrappers.
-2. Hook handlers call `kanban hooks ...` subcommands.
-3. `kanban hooks ingest --event <to_review|to_in_progress>` reads hook context from env:
-   - `KANBAN_HOOK_TASK_ID`
-   - `KANBAN_HOOK_WORKSPACE_ID`
-   - `KANBAN_HOOK_PORT`
+2. Hook handlers call `shuvban hooks ...` subcommands.
+3. `shuvban hooks ingest --event <to_review|to_in_progress>` reads hook context from env:
+   - `SHUVBAN_HOOK_TASK_ID`
+   - `SHUVBAN_HOOK_WORKSPACE_ID`
+   - `SHUVBAN_HOOK_PORT`
 4. The ingest command calls runtime TRPC `hooks.ingest`.
 5. The runtime applies guarded transitions and ignores duplicates or invalid transitions as no-ops.
 
@@ -195,7 +195,7 @@ Important behavior details:
 - Hooks are best-effort and should not crash or block the underlying agent process.
 - Hook notify paths are asynchronous to keep agent UX responsive.
 - Runtime transition guards are authoritative and prevent state flapping from duplicate events.
-- Hook transport is implemented in Node and invoked through `kanban hooks ...`, so the behavior is consistent across Windows and non-Windows environments.
+- Hook transport is implemented in Node and invoked through `shuvban hooks ...`, so the behavior is consistent across Windows and non-Windows environments.
 
 For a full technical breakdown, see:
 
@@ -213,9 +213,9 @@ Local development:
 - If `POSTHOG_KEY` is missing, telemetry does not initialize.
 
 Release builds:
-- The publish workflow injects `POSTHOG_KEY` and `POSTHOG_HOST` from GitHub Secrets.
-- `POSTHOG_HOST` is optional and defaults to `https://data.cline.bot`.
+- Frontend telemetry is currently disabled in this fork.
+- `POSTHOG_KEY` and `POSTHOG_HOST` are retained only for future re-enablement.
 
 Result:
-- Official releases have telemetry enabled.
+- Official builds do not initialize PostHog.
 - Forks and source builds have telemetry disabled unless a key is explicitly provided.

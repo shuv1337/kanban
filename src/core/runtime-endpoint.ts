@@ -1,54 +1,54 @@
-export const DEFAULT_KANBAN_RUNTIME_HOST = "127.0.0.1";
-export const DEFAULT_KANBAN_RUNTIME_PORT = 3484;
+export const DEFAULT_SHUVBAN_RUNTIME_HOST = "127.0.0.1";
+export const DEFAULT_SHUVBAN_RUNTIME_PORT = 3484;
 
-let runtimeHost: string = process.env.KANBAN_RUNTIME_HOST?.trim() || DEFAULT_KANBAN_RUNTIME_HOST;
+let runtimeHost: string = process.env.SHUVBAN_RUNTIME_HOST?.trim() || DEFAULT_SHUVBAN_RUNTIME_HOST;
 
-export function getKanbanRuntimeHost(): string {
+export function getShuvbanRuntimeHost(): string {
 	return runtimeHost;
 }
 
-export function setKanbanRuntimeHost(host: string): void {
+export function setShuvbanRuntimeHost(host: string): void {
 	runtimeHost = host;
-	process.env.KANBAN_RUNTIME_HOST = host;
+	process.env.SHUVBAN_RUNTIME_HOST = host;
 }
 
 export function parseRuntimePort(rawPort: string | undefined): number {
 	if (!rawPort) {
-		return DEFAULT_KANBAN_RUNTIME_PORT;
+		return DEFAULT_SHUVBAN_RUNTIME_PORT;
 	}
 	const parsed = Number.parseInt(rawPort, 10);
 	if (!Number.isFinite(parsed) || parsed < 1 || parsed > 65535) {
-		throw new Error(`Invalid KANBAN_RUNTIME_PORT value "${rawPort}". Expected an integer from 1-65535.`);
+		throw new Error(`Invalid SHUVBAN_RUNTIME_PORT value "${rawPort}". Expected an integer from 1-65535.`);
 	}
 	return parsed;
 }
 
-let runtimePort = parseRuntimePort(process.env.KANBAN_RUNTIME_PORT?.trim());
+let runtimePort = parseRuntimePort(process.env.SHUVBAN_RUNTIME_PORT?.trim());
 
-export function getKanbanRuntimePort(): number {
+export function getShuvbanRuntimePort(): number {
 	return runtimePort;
 }
 
-export function setKanbanRuntimePort(port: number): void {
+export function setShuvbanRuntimePort(port: number): void {
 	const normalized = parseRuntimePort(String(port));
 	runtimePort = normalized;
-	process.env.KANBAN_RUNTIME_PORT = String(normalized);
+	process.env.SHUVBAN_RUNTIME_PORT = String(normalized);
 }
 
-export function getKanbanRuntimeOrigin(): string {
-	return `http://${getKanbanRuntimeHost()}:${getKanbanRuntimePort()}`;
+export function getShuvbanRuntimeOrigin(): string {
+	return `http://${getShuvbanRuntimeHost()}:${getShuvbanRuntimePort()}`;
 }
 
-export function getKanbanRuntimeWsOrigin(): string {
-	return `ws://${getKanbanRuntimeHost()}:${getKanbanRuntimePort()}`;
+export function getShuvbanRuntimeWsOrigin(): string {
+	return `ws://${getShuvbanRuntimeHost()}:${getShuvbanRuntimePort()}`;
 }
 
-export function buildKanbanRuntimeUrl(pathname: string): string {
+export function buildShuvbanRuntimeUrl(pathname: string): string {
 	const normalizedPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
-	return `${getKanbanRuntimeOrigin()}${normalizedPath}`;
+	return `${getShuvbanRuntimeOrigin()}${normalizedPath}`;
 }
 
-export function buildKanbanRuntimeWsUrl(pathname: string): string {
+export function buildShuvbanRuntimeWsUrl(pathname: string): string {
 	const normalizedPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
-	return `${getKanbanRuntimeWsOrigin()}${normalizedPath}`;
+	return `${getShuvbanRuntimeWsOrigin()}${normalizedPath}`;
 }

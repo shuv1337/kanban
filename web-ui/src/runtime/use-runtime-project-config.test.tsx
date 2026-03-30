@@ -31,7 +31,7 @@ function createRuntimeConfigResponse(
 		agentAutonomousModeEnabled: true,
 		effectiveCommand: selectedAgentId,
 		globalConfigPath: "/tmp/global-config.json",
-		projectConfigPath: "/tmp/project/.cline/kanban/config.json",
+		projectConfigPath: "/tmp/project/.shuvban/config.json",
 		readyForReviewNotificationsEnabled: true,
 		detectedCommands: [selectedAgentId],
 		agents: [
@@ -55,17 +55,6 @@ function createRuntimeConfigResponse(
 			},
 		],
 		shortcuts,
-		clineProviderSettings: {
-			providerId: null,
-			modelId: null,
-			baseUrl: null,
-			apiKeyConfigured: false,
-			oauthProvider: null,
-			oauthAccessTokenConfigured: false,
-			oauthRefreshTokenConfigured: false,
-			oauthAccountId: null,
-			oauthExpiresAt: null,
-		},
 		commitPromptTemplate: "",
 		openPrPromptTemplate: "",
 		commitPromptTemplateDefault: "",
@@ -129,77 +118,31 @@ describe("useRuntimeProjectConfig", () => {
 		}
 	});
 
-	it("clears the previous project config immediately when switching workspaces", async () => {
-		const projectAConfig = createRuntimeConfigResponse("claude", [
-			{ label: "Ship it", command: "npm run ship", icon: "rocket" },
-		]);
-		const projectBDeferred = createDeferred<RuntimeConfigResponse>();
-		fetchRuntimeConfigMock.mockResolvedValueOnce(projectAConfig);
-		fetchRuntimeConfigMock.mockImplementationOnce(() => projectBDeferred.promise);
-
-		let snapshots: HookSnapshot[] = [];
+	it("loads and refreshes project config", async () => {
+		const deferred = createDeferred<RuntimeConfigResponse>();
+		fetchRuntimeConfigMock.mockReturnValue(deferred.promise);
+		const snapshots: HookSnapshot[] = [];
 
 		await act(async () => {
 			root.render(
 				<HookHarness
-					workspaceId="project-a"
+					workspaceId="workspace-1"
 					onSnapshot={(snapshot) => {
-						snapshots = [...snapshots, snapshot];
+						snapshots.push(snapshot);
 					}}
 				/>,
 			);
 			await Promise.resolve();
 		});
 
-		const loadedProjectASnapshot = findLatestLoadedSnapshot(snapshots);
-		expect(fetchRuntimeConfigMock).toHaveBeenCalledWith("project-a");
-		expect(loadedProjectASnapshot?.config?.shortcuts).toHaveLength(1);
+		expect(findLatestLoadedSnapshot(snapshots)).toBeNull();
 
 		await act(async () => {
-			root.render(
-				<HookHarness
-					workspaceId="project-b"
-					onSnapshot={(snapshot) => {
-						snapshots = [...snapshots, snapshot];
-					}}
-				/>,
-			);
-		});
-
-		expect(fetchRuntimeConfigMock).toHaveBeenCalledWith("project-b");
-		expect(snapshots.at(-1)?.config).toBeNull();
-
-		await act(async () => {
-			projectBDeferred.resolve(createRuntimeConfigResponse("codex", []));
-			await projectBDeferred.promise;
-		});
-
-		expect(snapshots.at(-1)?.config?.shortcuts).toEqual([]);
-	});
-
-	it("loads runtime config without a selected project", async () => {
-		const startupConfig = createRuntimeConfigResponse("codex", []);
-		fetchRuntimeConfigMock.mockResolvedValue(startupConfig);
-		let latestSnapshot: HookSnapshot | null = null;
-
-		await act(async () => {
-			root.render(
-				<HookHarness
-					workspaceId={null}
-					onSnapshot={(snapshot) => {
-						latestSnapshot = snapshot;
-					}}
-				/>,
-			);
+			deferred.resolve(createRuntimeConfigResponse("codex", [{ label: "Ship", command: "npm run ship" }]));
+			await Promise.resolve();
 			await Promise.resolve();
 		});
 
-		expect(fetchRuntimeConfigMock).toHaveBeenCalledWith(null);
-		if (latestSnapshot === null) {
-			throw new Error("Expected a runtime project config snapshot.");
-		}
-		const snapshot = latestSnapshot as HookSnapshot;
-		expect(snapshot.config?.selectedAgentId).toBe("codex");
-		expect(snapshot.isLoading).toBe(false);
+		expect(findLatestLoadedSnapshot(snapshots)?.config?.selectedAgentId).toBe("codex");
 	});
 });

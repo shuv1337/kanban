@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { RequestProgrammaticCardMove } from "@/components/kanban-board";
+import type { RequestProgrammaticCardMove } from "@/components/shuvban-board";
 import type { ProgrammaticCardMoveInFlight } from "@/state/drag-rules";
 import type { BoardColumnId } from "@/types";
 

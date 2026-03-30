@@ -61,7 +61,7 @@ function createSessionSummary(taskId: string): RuntimeTaskSessionSummary {
 }
 
 async function withTemporaryHome<T>(run: () => Promise<T>): Promise<T> {
-	const { path: tempHome, cleanup } = createTempDir("kanban-home-");
+	const { path: tempHome, cleanup } = createTempDir("shuvban-home-");
 	const previousHome = process.env.HOME;
 	const previousUserProfile = process.env.USERPROFILE;
 	process.env.HOME = tempHome;
@@ -97,7 +97,7 @@ function initGitRepository(path: string): void {
 describe.sequential("workspace-state integration", () => {
 	it("persists revision numbers and rejects stale writes", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanban-workspace-");
+			const { path: sandboxRoot, cleanup } = createTempDir("shuvban-workspace-");
 			try {
 				const workspacePath = join(sandboxRoot, "project-a");
 				mkdirSync(workspacePath, { recursive: true });
@@ -144,7 +144,7 @@ describe.sequential("workspace-state integration", () => {
 
 	it("lists and removes workspace index entries across multiple projects", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanban-workspaces-");
+			const { path: sandboxRoot, cleanup } = createTempDir("shuvban-workspaces-");
 			try {
 				const workspaceAPath = join(sandboxRoot, "alpha");
 				const workspaceBPath = join(sandboxRoot, "beta");
@@ -178,7 +178,7 @@ describe.sequential("workspace-state integration", () => {
 
 	it("keeps all workspace index entries when projects are added concurrently", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanban-workspaces-concurrent-");
+			const { path: sandboxRoot, cleanup } = createTempDir("shuvban-workspaces-concurrent-");
 			try {
 				const workspaceAPath = join(sandboxRoot, "alpha");
 				const workspaceBPath = join(sandboxRoot, "beta");
@@ -205,7 +205,7 @@ describe.sequential("workspace-state integration", () => {
 
 	it("creates readable workspace ids from folder names with random suffix on collisions", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanban-workspace-id-format-");
+			const { path: sandboxRoot, cleanup } = createTempDir("shuvban-workspace-id-format-");
 			try {
 				const workspaceAPath = join(sandboxRoot, "one", "vscrui");
 				const workspaceBPath = join(sandboxRoot, "two", "vscrui");
@@ -236,7 +236,7 @@ describe.sequential("workspace-state integration", () => {
 
 	it("can require an existing project without auto-creating workspace entries", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanban-workspace-autocreate-");
+			const { path: sandboxRoot, cleanup } = createTempDir("shuvban-workspace-autocreate-");
 			try {
 				const workspacePath = join(sandboxRoot, "gamma");
 				mkdirSync(workspacePath, { recursive: true });
@@ -246,7 +246,7 @@ describe.sequential("workspace-state integration", () => {
 					loadWorkspaceContext(workspacePath, {
 						autoCreateIfMissing: false,
 					}),
-				).rejects.toThrow("is not added to Kanban yet");
+				).rejects.toThrow("is not added to Shuvban yet");
 
 				const created = await loadWorkspaceContext(workspacePath);
 				expect(created.repoPath).toBeTruthy();
@@ -263,7 +263,7 @@ describe.sequential("workspace-state integration", () => {
 
 	it("fails loudly when persisted board data is malformed", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanban-malformed-board-");
+			const { path: sandboxRoot, cleanup } = createTempDir("shuvban-malformed-board-");
 			try {
 				const workspacePath = join(sandboxRoot, "project-bad-board");
 				mkdirSync(workspacePath, { recursive: true });
@@ -309,7 +309,7 @@ describe.sequential("workspace-state integration", () => {
 
 	it("fails loudly when persisted sessions include unknown states", async () => {
 		await withTemporaryHome(async () => {
-			const { path: sandboxRoot, cleanup } = createTempDir("kanban-malformed-sessions-");
+			const { path: sandboxRoot, cleanup } = createTempDir("shuvban-malformed-sessions-");
 			try {
 				const workspacePath = join(sandboxRoot, "project-bad-sessions");
 				mkdirSync(workspacePath, { recursive: true });

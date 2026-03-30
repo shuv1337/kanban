@@ -1,4 +1,3 @@
-import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node.js";
 import { spawn, spawnSync } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
@@ -15,19 +14,19 @@ import {
 	shouldSuppressImmediateDuplicateShutdownSignals,
 } from "./core/graceful-shutdown";
 import {
-	buildKanbanRuntimeUrl,
-	DEFAULT_KANBAN_RUNTIME_PORT,
-	getKanbanRuntimeHost,
-	getKanbanRuntimeOrigin,
-	getKanbanRuntimePort,
+	buildShuvbanRuntimeUrl,
+	DEFAULT_SHUVBAN_RUNTIME_PORT,
+	getShuvbanRuntimeHost,
+	getShuvbanRuntimeOrigin,
+	getShuvbanRuntimePort,
 	parseRuntimePort,
-	setKanbanRuntimeHost,
-	setKanbanRuntimePort,
+	setShuvbanRuntimeHost,
+	setShuvbanRuntimePort,
 } from "./core/runtime-endpoint";
 import { terminateProcessForTimeout } from "./server/process-termination";
 import type { RuntimeStateHub } from "./server/runtime-state-hub";
+import { captureNodeException, flushNodeTelemetry } from "./telemetry/sentry-node.js";
 import type { TerminalSessionManager } from "./terminal/session-manager";
-import { disposeCliTelemetryService } from "./cline-sdk/cline-telemetry-service.js";
 
 interface CliOptions {
 	noOpen: boolean;
@@ -36,7 +35,7 @@ interface CliOptions {
 	port: { mode: "fixed"; value: number } | { mode: "auto" } | null;
 }
 
-const KANBAN_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
+const SHUVBAN_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.1.0";
 
 function parseCliPortValue(rawValue: string): { mode: "fixed"; value: number } | { mode: "auto" } {
 	const normalized = rawValue.trim().toLowerCase();
@@ -70,8 +69,8 @@ interface ShutdownIndicator {
 /**
  * Decide whether this CLI invocation should auto-open a browser tab.
  *
- * This uses a positive allowlist for app-launch shapes like `kanban`,
- * `kanban --agent codex`, and `kanban --port 3484`. Any subcommand or
+ * This uses a positive allowlist for app-launch shapes like `shuvban`,
+ * `shuvban --agent codex`, and `shuvban --port 3484`. Any subcommand or
  * unexpected argument is treated as a command-style invocation instead.
  */
 function shouldAutoOpenBrowserTabForInvocation(argv: string[]): boolean {
@@ -154,7 +153,7 @@ async function isPortAvailable(port: number): Promise<boolean> {
 		probe.once("error", () => {
 			resolve(false);
 		});
-		probe.listen(port, getKanbanRuntimeHost(), () => {
+		probe.listen(port, getShuvbanRuntimeHost(), () => {
 			probe.close(() => {
 				resolve(true);
 			});
@@ -176,11 +175,11 @@ async function applyRuntimePortOption(portOption: CliOptions["port"]): Promise<n
 		return null;
 	}
 	if (portOption.mode === "fixed") {
-		setKanbanRuntimePort(portOption.value);
+		setShuvbanRuntimePort(portOption.value);
 		return portOption.value;
 	}
-	const autoPort = await findAvailableRuntimePort(DEFAULT_KANBAN_RUNTIME_PORT);
-	setKanbanRuntimePort(autoPort);
+	const autoPort = await findAvailableRuntimePort(DEFAULT_SHUVBAN_RUNTIME_PORT);
+	setShuvbanRuntimePort(autoPort);
 	return autoPort;
 }
 
@@ -219,13 +218,13 @@ function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException {
 	);
 }
 
-async function canReachKanbanServer(workspaceId: string | null): Promise<boolean> {
+async function canReachShuvbanServer(workspaceId: string | null): Promise<boolean> {
 	try {
 		const headers: Record<string, string> = {};
 		if (workspaceId) {
-			headers["x-kanban-workspace-id"] = workspaceId;
+			headers["x-shuvban-workspace-id"] = workspaceId;
 		}
-		const response = await fetch(buildKanbanRuntimeUrl("/api/trpc/projects.list"), {
+		const response = await fetch(buildShuvbanRuntimeUrl("/api/trpc/projects.list"), {
 			method: "GET",
 			headers,
 			signal: AbortSignal.timeout(1_500),
@@ -250,14 +249,14 @@ async function tryOpenExistingServer(options: { noOpen: boolean; shouldAutoOpenB
 		const context = await loadWorkspaceContext(process.cwd());
 		workspaceId = context.workspaceId;
 	}
-	const running = await canReachKanbanServer(workspaceId);
+	const running = await canReachShuvbanServer(workspaceId);
 	if (!running) {
 		return false;
 	}
 	const projectUrl = workspaceId
-		? buildKanbanRuntimeUrl(`/${encodeURIComponent(workspaceId)}`)
-		: getKanbanRuntimeOrigin();
-	console.log(`Kanban already running at ${getKanbanRuntimeOrigin()}`);
+		? buildShuvbanRuntimeUrl(`/${encodeURIComponent(workspaceId)}`)
+		: getShuvbanRuntimeOrigin();
+	console.log(`Shuvban already running at ${getShuvbanRuntimeOrigin()}`);
 	if (!options.noOpen && options.shouldAutoOpenBrowser) {
 		try {
 			const { openInBrowser } = await import("./server/browser.js");
@@ -341,14 +340,15 @@ async function startServer(): Promise<{
 }> {
 	/*
 		Server-only modules are loaded lazily because task-oriented subcommands like
-		`kanban task create` and `kanban hooks ingest` do not need the runtime server.
+		`shuvban task create` and `shuvban hooks ingest` do not need the runtime server.
 
 		A regression in 25ba59f showed that eagerly importing the runtime stack here
 		could leave the source CLI process alive after the command had already printed
-		its JSON result. The issue first appeared after the native Cline SDK runtime
-		was added to the server import graph. We have not yet isolated the deepest
-		handle creator inside that graph, so we keep command-style subcommands on the
-		lightweight path and only load the server stack when we actually start Kanban.
+		its JSON result. The issue first appeared after the heavier runtime server
+		dependencies were added to the server import graph. We have not yet isolated
+		the deepest handle creator inside that graph, so we keep command-style
+		subcommands on the lightweight path and only load the server stack when we
+		actually start Shuvban.
 	*/
 	const [
 		{ resolveProjectInputPath },
@@ -403,7 +403,7 @@ async function startServer(): Promise<{
 		workspaceRegistry,
 		runtimeStateHub: runtimeHub,
 		warn: (message) => {
-			console.warn(`[kanban] ${message}`);
+			console.warn(`[shuvban] ${message}`);
 		},
 		ensureTerminalManagerForWorkspace: workspaceRegistry.ensureTerminalManagerForWorkspace,
 		resolveInteractiveShellCommand,
@@ -424,7 +424,7 @@ async function startServer(): Promise<{
 		await shutdownRuntimeServer({
 			workspaceRegistry,
 			warn: (message) => {
-				console.warn(`[kanban] ${message}`);
+				console.warn(`[shuvban] ${message}`);
 			},
 			closeRuntimeServer: close,
 			skipSessionCleanup: options?.skipSessionCleanup ?? false,
@@ -450,9 +450,9 @@ async function startServerWithAutoPortRetry(options: CliOptions): Promise<Awaite
 			if (!isAddressInUseError(error)) {
 				throw error;
 			}
-			const currentPort = getKanbanRuntimePort();
+			const currentPort = getShuvbanRuntimePort();
 			const retryPort = await findAvailableRuntimePort(currentPort + 1);
-			setKanbanRuntimePort(retryPort);
+			setShuvbanRuntimePort(retryPort);
 			console.warn(`Runtime port ${currentPort} became busy during startup, retrying on ${retryPort}.`);
 		}
 	}
@@ -460,7 +460,7 @@ async function startServerWithAutoPortRetry(options: CliOptions): Promise<Awaite
 
 async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolean): Promise<void> {
 	if (options.host) {
-		setKanbanRuntimeHost(options.host);
+		setShuvbanRuntimeHost(options.host);
 		console.log(`Binding to host ${options.host}.`);
 	}
 
@@ -475,7 +475,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 	}
 
 	autoUpdateOnStartup({
-		currentVersion: KANBAN_VERSION,
+		currentVersion: SHUVBAN_VERSION,
 	});
 
 	let runtime: Awaited<ReturnType<typeof startServer>>;
@@ -491,7 +491,7 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		}
 		throw error;
 	}
-	console.log(`Cline Kanban running at ${runtime.url}`);
+	console.log(`Shuvban running at ${runtime.url}`);
 	if (!options.noOpen && shouldAutoOpenBrowser) {
 		try {
 			openInBrowser(runtime.url, {
@@ -520,7 +520,6 @@ async function runMainCommand(options: CliOptions, shouldAutoOpenBrowser: boolea
 		await runtime.shutdown({
 			skipSessionCleanup: options.skipShutdownCleanup,
 		});
-		await disposeCliTelemetryService().catch(() => {});
 	};
 
 	installGracefulShutdownHandlers({
@@ -561,15 +560,15 @@ function createProgram(invocationArgs: string[]): Command {
 	const shouldAutoOpenBrowser = shouldAutoOpenBrowserTabForInvocation(invocationArgs);
 	const program = new Command();
 	program
-		.name("kanban")
+		.name("shuvban")
 		.description("Local orchestration board for coding agents.")
-		.version(KANBAN_VERSION, "-v, --version", "Output the version number")
+		.version(SHUVBAN_VERSION, "-v, --version", "Output the version number")
 		.option("--host <ip>", "Host IP to bind the server to (default: 127.0.0.1).")
 		.option("--port <number|auto>", "Runtime port (1-65535) or auto.", parseCliPortValue)
 		.option("--no-open", "Do not open browser automatically.")
 		.option("--skip-shutdown-cleanup", "Do not move sessions to trash or delete task worktrees on shutdown.")
 		.showHelpAfterError()
-		.addHelpText("after", `\nRuntime URL: ${getKanbanRuntimeOrigin()}`);
+		.addHelpText("after", `\nRuntime URL: ${getShuvbanRuntimeOrigin()}`);
 
 	program.addOption(new Option("--agent <id>", "Deprecated compatibility flag. Ignored.").hideHelp());
 
@@ -580,7 +579,7 @@ function createProgram(invocationArgs: string[]): Command {
 		.command("mcp")
 		.description("Deprecated compatibility command.")
 		.action(() => {
-			console.warn("Deprecated. Please uninstall Kanban MCP.");
+			console.warn("Deprecated. Please uninstall Shuvban MCP.");
 		});
 
 	program.action(async (options: RootCommandOptions) => {
@@ -606,11 +605,8 @@ async function run(): Promise<void> {
 
 void run().catch(async (error) => {
 	captureNodeException(error, { area: "startup" });
-	await Promise.allSettled([
-		disposeCliTelemetryService(),
-		flushNodeTelemetry(),
-	]);
+	await Promise.allSettled([flushNodeTelemetry()]);
 	const message = error instanceof Error ? error.message : String(error);
-	console.error(`Failed to start Kanban: ${message}`);
+	console.error(`Failed to start Shuvban: ${message}`);
 	process.exit(1);
 });

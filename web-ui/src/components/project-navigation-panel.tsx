@@ -3,9 +3,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, ChevronUp, Ellipsis, Plus } from "lucide-react";
 import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ClineIcon } from "@/components/ui/cline-icon";
 import { cn } from "@/components/ui/cn";
-import { openFeaturebaseFeedbackWidget } from "@/hooks/use-featurebase-feedback-widget";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -17,7 +15,9 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
+import { ShuvbanIcon } from "@/components/ui/shuvban-icon";
 import { Spinner } from "@/components/ui/spinner";
+import { openFeaturebaseFeedbackWidget } from "@/hooks/use-featurebase-feedback-widget";
 import type { RuntimeProjectSummary } from "@/runtime/types";
 import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 import { formatPathForDisplay } from "@/utils/path-display";
@@ -258,8 +258,8 @@ export function ProjectNavigationPanel({
 			<div style={{ padding: "12px 12px 8px" }}>
 				<div>
 					<div className="font-semibold text-base flex items-baseline gap-1.5">
-						<ClineIcon size={18} className="text-text-primary shrink-0 self-center" />
-						Cline <span className="text-text-secondary font-normal text-xs">v{__APP_VERSION__}</span>
+						<ShuvbanIcon size={18} className="text-text-primary shrink-0 self-center" />
+						Shuvban <span className="text-text-secondary font-normal text-xs">v{__APP_VERSION__}</span>
 					</div>
 				</div>
 				<div className="mt-2 rounded-md bg-surface-2 p-1">
@@ -288,7 +288,7 @@ export function ProjectNavigationPanel({
 								!canShowAgentSection ? "cursor-not-allowed opacity-50" : null,
 							)}
 						>
-							Kanban Agent
+							Shuvban Agent
 						</button>
 					</div>
 				</div>

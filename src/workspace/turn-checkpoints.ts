@@ -6,8 +6,8 @@ import type { RuntimeTaskTurnCheckpoint } from "../core/api-contract";
 import { createGitProcessEnv } from "../core/git-process-env";
 import { getGitStdout, type RunGitOptions } from "./git-utils";
 
-const CHECKPOINT_AUTHOR_NAME = "kanban-checkpoint";
-const CHECKPOINT_AUTHOR_EMAIL = "kanban-checkpoint@local";
+const CHECKPOINT_AUTHOR_NAME = "shuvban-checkpoint";
+const CHECKPOINT_AUTHOR_EMAIL = "shuvban-checkpoint@local";
 
 function runGit(cwd: string, args: string[], options: RunGitOptions = {}) {
 	return getGitStdout(args, cwd, options);
@@ -26,11 +26,11 @@ function encodeRefSegment(value: string): string {
 }
 
 function buildCheckpointRef(taskId: string, turn: number): string {
-	return `refs/kanban/checkpoints/${encodeRefSegment(taskId)}/turn/${turn}`;
+	return `refs/shuvban/checkpoints/${encodeRefSegment(taskId)}/turn/${turn}`;
 }
 
 async function createWorkingTreeCheckpointCommit(repoRoot: string, turn: number, taskId: string): Promise<string> {
-	const tempDir = await mkdtemp(join(tmpdir(), "kanban-checkpoint-"));
+	const tempDir = await mkdtemp(join(tmpdir(), "shuvban-checkpoint-"));
 	const tempIndexPath = join(tempDir, "index");
 
 	const gitEnv: NodeJS.ProcessEnv = {
@@ -55,7 +55,7 @@ async function createWorkingTreeCheckpointCommit(repoRoot: string, turn: number,
 		await runGit(repoRoot, ["add", "-A", "--", "."], { env: gitEnv });
 		const treeOid = await runGit(repoRoot, ["write-tree"], { env: gitEnv });
 
-		const commitMessage = `kanban checkpoint task:${taskId} turn:${turn}`;
+		const commitMessage = `shuvban checkpoint task:${taskId} turn:${turn}`;
 		const commitArgs = ["commit-tree", treeOid, "-m", commitMessage];
 		if (headCommit) {
 			commitArgs.push("-p", headCommit);

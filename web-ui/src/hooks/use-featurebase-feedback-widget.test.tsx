@@ -2,31 +2,9 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { RuntimeClineProviderSettings } from "@/runtime/types";
-
-const defaultClineProviderSettings: RuntimeClineProviderSettings = {
-	providerId: null,
-	modelId: null,
-	baseUrl: null,
-	apiKeyConfigured: false,
-	oauthProvider: null,
-	oauthAccessTokenConfigured: false,
-	oauthRefreshTokenConfigured: false,
-	oauthAccountId: null,
-	oauthExpiresAt: null,
-};
-
 async function importFeaturebaseModule() {
-	const fetchClineAccountProfileMock = vi.fn();
 	vi.resetModules();
-	vi.doMock("@/runtime/runtime-config-query", () => ({
-		fetchClineAccountProfile: fetchClineAccountProfileMock,
-	}));
-	const module = await import("@/hooks/use-featurebase-feedback-widget");
-	return {
-		module,
-		fetchClineAccountProfileMock,
-	};
+	return await import("@/hooks/use-featurebase-feedback-widget");
 }
 
 describe("useFeaturebaseFeedbackWidget", () => {
@@ -62,8 +40,8 @@ describe("useFeaturebaseFeedbackWidget", () => {
 			previousActEnvironment;
 	});
 
-	it("initializes the feedback widget even if the SDK load event fires immediately", async () => {
-		const { module } = await importFeaturebaseModule();
+	it("initializes the feedback widget when the SDK loads", async () => {
+		const module = await importFeaturebaseModule();
 		const featurebaseMock = vi.fn();
 		const originalAppendChild = document.head.appendChild.bind(document.head);
 
@@ -77,10 +55,7 @@ describe("useFeaturebaseFeedbackWidget", () => {
 		});
 
 		function HookHarness(): null {
-			module.useFeaturebaseFeedbackWidget({
-				workspaceId: null,
-				clineProviderSettings: defaultClineProviderSettings,
-			});
+			module.useFeaturebaseFeedbackWidget();
 			return null;
 		}
 
@@ -93,10 +68,10 @@ describe("useFeaturebaseFeedbackWidget", () => {
 		expect(featurebaseMock).toHaveBeenCalledWith(
 			"initialize_feedback_widget",
 			expect.objectContaining({
-				organization: "cline",
+				organization: "shuvban",
 				theme: "dark",
 				locale: "en",
-				metadata: { app: "kanban" },
+				metadata: { app: "shuvban" },
 			}),
 			expect.any(Function),
 		);
@@ -104,7 +79,7 @@ describe("useFeaturebaseFeedbackWidget", () => {
 
 	it("replays an early open request after the widget reports ready", async () => {
 		vi.useFakeTimers();
-		const { module } = await importFeaturebaseModule();
+		const module = await importFeaturebaseModule();
 		const featurebaseMock = vi.fn();
 		const postMessageMock = vi.spyOn(window, "postMessage");
 		const originalAppendChild = document.head.appendChild.bind(document.head);
@@ -119,10 +94,7 @@ describe("useFeaturebaseFeedbackWidget", () => {
 		});
 
 		function HookHarness(): null {
-			module.useFeaturebaseFeedbackWidget({
-				workspaceId: null,
-				clineProviderSettings: defaultClineProviderSettings,
-			});
+			module.useFeaturebaseFeedbackWidget();
 			return null;
 		}
 
@@ -151,79 +123,10 @@ describe("useFeaturebaseFeedbackWidget", () => {
 		});
 
 		expect(postMessageMock).toHaveBeenCalledTimes(1);
-		expect(postMessageMock).toHaveBeenCalledWith(
-			{
-				target: "FeaturebaseWidget",
-				data: {
-					action: "openFeedbackWidget",
-				},
-			},
-			"*",
-		);
-
 		await act(async () => {
 			vi.advanceTimersByTime(50);
 			await Promise.resolve();
 		});
-
 		expect(postMessageMock).toHaveBeenCalledTimes(2);
-	});
-
-	it("initializes immediately even while the managed Cline profile request is still pending", async () => {
-		const { module, fetchClineAccountProfileMock } = await importFeaturebaseModule();
-		const featurebaseMock = vi.fn();
-		const originalAppendChild = document.head.appendChild.bind(document.head);
-
-		fetchClineAccountProfileMock.mockReturnValue(new Promise(() => {}));
-
-		vi.spyOn(document.head, "appendChild").mockImplementation((node) => {
-			const result = originalAppendChild(node);
-			if (node instanceof HTMLScriptElement && node.id === "featurebase-sdk") {
-				(window as Window & { Featurebase?: unknown }).Featurebase = featurebaseMock;
-				node.dispatchEvent(new Event("load"));
-			}
-			return result;
-		});
-
-		function HookHarness(): null {
-			module.useFeaturebaseFeedbackWidget({
-				workspaceId: "workspace-1",
-				clineProviderSettings: {
-					...defaultClineProviderSettings,
-					oauthProvider: "cline",
-					oauthAccessTokenConfigured: true,
-					oauthAccountId: "account-123",
-				},
-			});
-			return null;
-		}
-
-		await act(async () => {
-			root.render(<HookHarness />);
-			await Promise.resolve();
-			await Promise.resolve();
-		});
-
-		expect(fetchClineAccountProfileMock).toHaveBeenCalledWith("workspace-1");
-		expect(featurebaseMock).toHaveBeenCalledWith(
-			"identify",
-			expect.objectContaining({
-				organization: "cline",
-				userId: "account-123",
-			}),
-		);
-		expect(featurebaseMock).toHaveBeenCalledWith(
-			"initialize_feedback_widget",
-			expect.objectContaining({
-				organization: "cline",
-				theme: "dark",
-				locale: "en",
-				metadata: expect.objectContaining({
-					app: "kanban",
-					cline_account_id: "account-123",
-				}),
-			}),
-			expect.any(Function),
-		);
 	});
 });

@@ -439,7 +439,7 @@ export function detectAutoUpdateInstallation(options: {
 }
 
 function isAutoUpdateDisabled(env: NodeJS.ProcessEnv): boolean {
-	if (env.KANBAN_NO_AUTO_UPDATE === "1") {
+	if (env.SHUVBAN_NO_AUTO_UPDATE === "1") {
 		return true;
 	}
 	if (env.NODE_ENV === "test" || env.VITEST === "true") {
@@ -512,7 +512,7 @@ export function runPendingAutoUpdateOnShutdown(options?: {
 	pendingShutdownAutoUpdate = null;
 
 	const log = options?.log ?? console.log;
-	log(`New version ${pendingUpdate.latestVersion} detected. Refreshing cached Kanban for next launch.`);
+	log(`New version ${pendingUpdate.latestVersion} detected. Refreshing cached Shuvban for next launch.`);
 
 	const spawnUpdate = options?.spawnUpdate ?? spawnDetachedUpdate;
 	spawnUpdate(pendingUpdate.command, pendingUpdate.args);
@@ -537,7 +537,7 @@ export async function runAutoUpdateCheck(options: AutoUpdateStartupOptions): Pro
 		return;
 	}
 
-	const packageName = options.packageName ?? "kanban";
+	const packageName = options.packageName ?? "shuvban";
 	const installation = detectAutoUpdateInstallation({
 		currentVersion: options.currentVersion,
 		packageName,

@@ -56,9 +56,9 @@ describe("detectAutoUpdateInstallation", () => {
 	it("marks workspace-local execution as local and non-updatable", () => {
 		const installation = detectAutoUpdateInstallation({
 			currentVersion: "1.0.0",
-			packageName: "kanban",
-			entrypointPath: "/workspace/kanban/dist/cli.js",
-			cwd: "/workspace/kanban",
+			packageName: "shuvban",
+			entrypointPath: "/workspace/shuvban/dist/cli.js",
+			cwd: "/workspace/shuvban",
 		});
 
 		expect(installation.packageManager).toBe(AutoUpdatePackageManager.LOCAL);
@@ -69,8 +69,8 @@ describe("detectAutoUpdateInstallation", () => {
 	it("marks npx installs for shutdown-time cache refresh", () => {
 		const installation = detectAutoUpdateInstallation({
 			currentVersion: "1.0.0",
-			packageName: "kanban",
-			entrypointPath: "/Users/saoud/.npm/_npx/593b71878a7c70f2/node_modules/kanban/dist/cli.js",
+			packageName: "shuvban",
+			entrypointPath: "/Users/saoud/.npm/_npx/593b71878a7c70f2/node_modules/shuvban/dist/cli.js",
 			cwd: "/Users/saoud/projects/work",
 		});
 
@@ -85,8 +85,8 @@ describe("detectAutoUpdateInstallation", () => {
 	it("marks npm-cache npx installs for shutdown-time cache refresh", () => {
 		const installation = detectAutoUpdateInstallation({
 			currentVersion: "1.0.0",
-			packageName: "kanban",
-			entrypointPath: "/Users/saoud/AppData/Local/npm-cache/_npx/593b71878a7c70f2/node_modules/kanban/dist/cli.js",
+			packageName: "shuvban",
+			entrypointPath: "/Users/saoud/AppData/Local/npm-cache/_npx/593b71878a7c70f2/node_modules/shuvban/dist/cli.js",
 			cwd: "/Users/saoud/projects/work",
 		});
 
@@ -104,9 +104,9 @@ describe("detectAutoUpdateInstallation", () => {
 	it("marks pnpm dlx installs for shutdown-time cache refresh", () => {
 		const installation = detectAutoUpdateInstallation({
 			currentVersion: "1.0.0",
-			packageName: "kanban",
+			packageName: "shuvban",
 			entrypointPath:
-				"/Users/saoud/Library/Caches/pnpm/dlx/82fa34f6d8482ef2103aa281bbfd9bc42aeec4c8b99d8b1d6bc4653f9d4d179d/19cd9b46385-11271/node_modules/.pnpm/kanban@1.0.0/node_modules/kanban/dist/cli.js",
+				"/Users/saoud/Library/Caches/pnpm/dlx/82fa34f6d8482ef2103aa281bbfd9bc42aeec4c8b99d8b1d6bc4653f9d4d179d/19cd9b46385-11271/node_modules/.pnpm/shuvban@1.0.0/node_modules/shuvban/dist/cli.js",
 			cwd: "/Users/saoud/projects/work",
 		});
 
@@ -124,8 +124,8 @@ describe("detectAutoUpdateInstallation", () => {
 	it("marks bunx installs for shutdown-time cache refresh", () => {
 		const installation = detectAutoUpdateInstallation({
 			currentVersion: "1.0.0",
-			packageName: "kanban",
-			entrypointPath: "/private/tmp/bunx-501-kanban@1.0.0/node_modules/kanban/dist/cli.js",
+			packageName: "shuvban",
+			entrypointPath: "/private/tmp/bunx-501-shuvban@1.0.0/node_modules/shuvban/dist/cli.js",
 			cwd: "/Users/saoud/projects/work",
 		});
 
@@ -134,15 +134,15 @@ describe("detectAutoUpdateInstallation", () => {
 		expect(installation.updateCommand?.command).toBe(process.execPath);
 		expect(installation.updateCommand?.args[0]).toBe("-e");
 		expect(typeof installation.updateCommand?.args[1]).toBe("string");
-		expectPathEndsWith(installation.updateCommand?.args[2], "/private/tmp/bunx-501-kanban@1.0.0");
+		expectPathEndsWith(installation.updateCommand?.args[2], "/private/tmp/bunx-501-shuvban@1.0.0");
 	});
 
 	it("marks yarn dlx installs for shutdown-time cache refresh", () => {
 		const installation = detectAutoUpdateInstallation({
 			currentVersion: "1.0.0",
-			packageName: "kanban",
+			packageName: "shuvban",
 			entrypointPath:
-				"/private/var/folders/v5/vpxh_439455fv8f_y_55m8q00000gn/T/xfs-bf17b212/dlx-39615/.yarn/cache/kanban-npm-1.0.0-abcdef1234.zip/node_modules/kanban/dist/cli.js",
+				"/private/var/folders/v5/vpxh_439455fv8f_y_55m8q00000gn/T/xfs-bf17b212/dlx-39615/.yarn/cache/shuvban-npm-1.0.0-abcdef1234.zip/node_modules/shuvban/dist/cli.js",
 			cwd: "/Users/saoud/projects/work",
 		});
 
@@ -160,8 +160,8 @@ describe("detectAutoUpdateInstallation", () => {
 	it("treats workspace-local paths as local before transient heuristics", () => {
 		const installation = detectAutoUpdateInstallation({
 			currentVersion: "1.0.0",
-			packageName: "kanban",
-			entrypointPath: "/Users/saoud/projects/work/.npm/_npx/demo/node_modules/kanban/dist/cli.js",
+			packageName: "shuvban",
+			entrypointPath: "/Users/saoud/projects/work/.npm/_npx/demo/node_modules/shuvban/dist/cli.js",
 			cwd: "/Users/saoud/projects/work",
 		});
 
@@ -173,8 +173,8 @@ describe("detectAutoUpdateInstallation", () => {
 	it("fails closed for malformed npx-style paths", () => {
 		const installation = detectAutoUpdateInstallation({
 			currentVersion: "1.0.0",
-			packageName: "kanban",
-			entrypointPath: "/Users/saoud/.npm/_npx/node_modules/kanban/dist/cli.js",
+			packageName: "shuvban",
+			entrypointPath: "/Users/saoud/.npm/_npx/node_modules/shuvban/dist/cli.js",
 			cwd: "/Users/saoud/projects/work",
 		});
 
@@ -186,8 +186,8 @@ describe("detectAutoUpdateInstallation", () => {
 	it("fails closed for malformed npm-cache npx-style paths", () => {
 		const installation = detectAutoUpdateInstallation({
 			currentVersion: "1.0.0",
-			packageName: "kanban",
-			entrypointPath: "/Users/saoud/AppData/Local/npm-cache/_npx/node_modules/kanban/dist/cli.js",
+			packageName: "shuvban",
+			entrypointPath: "/Users/saoud/AppData/Local/npm-cache/_npx/node_modules/shuvban/dist/cli.js",
 			cwd: "/Users/saoud/projects/work",
 		});
 
@@ -199,8 +199,8 @@ describe("detectAutoUpdateInstallation", () => {
 	it("fails closed for malformed pnpm dlx paths", () => {
 		const installation = detectAutoUpdateInstallation({
 			currentVersion: "1.0.0",
-			packageName: "kanban",
-			entrypointPath: "/Users/saoud/Library/Caches/pnpm/dlx/hashonly/node_modules/kanban/dist/cli.js",
+			packageName: "shuvban",
+			entrypointPath: "/Users/saoud/Library/Caches/pnpm/dlx/hashonly/node_modules/shuvban/dist/cli.js",
 			cwd: "/Users/saoud/projects/work",
 		});
 
@@ -209,10 +209,10 @@ describe("detectAutoUpdateInstallation", () => {
 		expect(installation.updateTiming).toBe("startup");
 	});
 
-	it("fails closed for transient-looking paths that are not kanban", () => {
+	it("fails closed for transient-looking paths that are not shuvban", () => {
 		const installation = detectAutoUpdateInstallation({
 			currentVersion: "1.0.0",
-			packageName: "kanban",
+			packageName: "shuvban",
 			entrypointPath: "/private/tmp/bunx-501-otherpkg@1.0.0/node_modules/otherpkg/dist/cli.js",
 			cwd: "/Users/saoud/projects/work",
 		});
@@ -229,8 +229,8 @@ describe("runAutoUpdateCheck", () => {
 
 		await runAutoUpdateCheck({
 			currentVersion: "1.0.0",
-			packageName: "kanban",
-			argv: ["node", "/usr/local/lib/node_modules/kanban/dist/cli.js"],
+			packageName: "shuvban",
+			argv: ["node", "/usr/local/lib/node_modules/shuvban/dist/cli.js"],
 			cwd: "/Users/saoud/projects/work",
 			env: {},
 			resolveRealPath: (path) => path,
@@ -243,7 +243,7 @@ describe("runAutoUpdateCheck", () => {
 		expect(spawnedUpdates).toEqual([
 			{
 				command: "npm",
-				args: ["install", "-g", "kanban@latest"],
+				args: ["install", "-g", "shuvban@latest"],
 			},
 		]);
 	});
@@ -253,8 +253,8 @@ describe("runAutoUpdateCheck", () => {
 
 		await runAutoUpdateCheck({
 			currentVersion: "1.0.0",
-			packageName: "kanban",
-			argv: ["node", "/Users/saoud/.npm/_npx/593b71878a7c70f2/node_modules/kanban/dist/cli.js"],
+			packageName: "shuvban",
+			argv: ["node", "/Users/saoud/.npm/_npx/593b71878a7c70f2/node_modules/shuvban/dist/cli.js"],
 			cwd: "/Users/saoud/projects/work",
 			env: {},
 			resolveRealPath: (path) => path,
@@ -273,8 +273,8 @@ describe("runAutoUpdateCheck", () => {
 
 		await runAutoUpdateCheck({
 			currentVersion: "1.0.0",
-			packageName: "kanban",
-			argv: ["node", "/Users/saoud/.npm/_npx/593b71878a7c70f2/node_modules/kanban/dist/cli.js"],
+			packageName: "shuvban",
+			argv: ["node", "/Users/saoud/.npm/_npx/593b71878a7c70f2/node_modules/shuvban/dist/cli.js"],
 			cwd: "/Users/saoud/projects/work",
 			env: {},
 			resolveRealPath: (path) => path,
@@ -293,7 +293,7 @@ describe("runAutoUpdateCheck", () => {
 			},
 		});
 
-		expect(messages).toEqual(["New version 1.1.0 detected. Refreshing cached Kanban for next launch."]);
+		expect(messages).toEqual(["New version 1.1.0 detected. Refreshing cached Shuvban for next launch."]);
 		expect(spawnedUpdates).toHaveLength(1);
 		expect(spawnedUpdates[0]?.command).toBe(process.execPath);
 		expect(spawnedUpdates[0]?.args[0]).toBe("-e");
@@ -307,8 +307,8 @@ describe("runAutoUpdateCheck", () => {
 
 		const options = {
 			currentVersion: "1.0.0",
-			packageName: "kanban",
-			argv: ["node", "/usr/local/lib/node_modules/kanban/dist/cli.js"],
+			packageName: "shuvban",
+			argv: ["node", "/usr/local/lib/node_modules/shuvban/dist/cli.js"],
 			cwd: "/Users/saoud/projects/work",
 			env: {},
 			resolveRealPath: (path: string) => path,
@@ -328,15 +328,15 @@ describe("runAutoUpdateCheck", () => {
 		expect(spawnCalls).toBe(2);
 	});
 
-	it("skips update checks when KANBAN_NO_AUTO_UPDATE is set", async () => {
+	it("skips update checks when SHUVBAN_NO_AUTO_UPDATE is set", async () => {
 		let fetchCalled = false;
 
 		await runAutoUpdateCheck({
 			currentVersion: "1.0.0",
-			packageName: "kanban",
-			argv: ["node", "/usr/local/lib/node_modules/kanban/dist/cli.js"],
+			packageName: "shuvban",
+			argv: ["node", "/usr/local/lib/node_modules/shuvban/dist/cli.js"],
 			cwd: "/Users/saoud/projects/work",
-			env: { KANBAN_NO_AUTO_UPDATE: "1" },
+			env: { SHUVBAN_NO_AUTO_UPDATE: "1" },
 			resolveRealPath: (path) => path,
 			fetchLatestVersion: async () => {
 				fetchCalled = true;

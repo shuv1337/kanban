@@ -1,32 +1,32 @@
 {
-  "name": "kanban",
+  "name": "shuvban",
   "version": "0.1.52",
-  "description": "A kanban foundation for coding agents",
+  "description": "A shuvban foundation for coding agents",
   "publishConfig": {
     "access": "public",
     "provenance": true
   },
   "keywords": [
-    "kanban",
+    "shuvban",
     "agents",
     "cli",
     "task-management",
     "typescript"
   ],
-  "homepage": "https://github.com/cline/kanban",
+  "homepage": "https://github.com/shuv/shuvban",
   "bugs": {
-    "url": "https://github.com/cline/kanban/issues"
+    "url": "https://github.com/shuv/shuvban/issues"
   },
-  "author": "Cline",
+  "author": "Shuv",
   "repository": {
     "type": "git",
-    "url": "https://github.com/cline/kanban"
+    "url": "https://github.com/shuv/shuvban"
   },
   "type": "module",
   "bin": {
-    "kanban": "dist/cli.js"
+    "shuvban": "dist/cli.js"
   },
-  "man": "./man/kanban.1",
+  "man": "./man/shuvban.1",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -50,7 +50,7 @@
     "build": "npm run clean && npm run web:build && node scripts/build.mjs && shx mkdir -p dist/web-ui && shx cp -r web-ui/dist/* dist/web-ui && node scripts/upload-sentry-sourcemaps.mjs && shx chmod +x dist/cli.js",
     "dogfood": "node scripts/dogfood.mjs",
     "link": "npm run build && npm link",
-    "unlink": "npm unlink -g kanban",
+    "unlink": "npm unlink -g shuvban",
     "dev": "tsx watch src/cli.ts",
     "web:dev": "npm --prefix web-ui run dev",
     "web:build": "npm --prefix web-ui run build",
@@ -68,7 +68,6 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "@biomejs/biome": "^2.3.5",
-    "@sentry/cli": "^3.3.3",
     "@types/node": "^22.10.5",
     "@types/proper-lockfile": "^4.1.4",
     "@types/ws": "^8.18.1",
@@ -80,12 +79,7 @@
     "vitest": "^4.1.0"
   },
   "dependencies": {
-    "@clinebot/agents": "^0.0.22",
-    "@clinebot/core": "^0.0.22",
-    "@clinebot/llms": "^0.0.22",
-    "@clinebot/shared": "^0.0.22",
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "@sentry/node": "^10.45.0",
     "@trpc/client": "^11.11.0",
     "@trpc/server": "^11.11.0",
     "@xterm/addon-serialize": "^0.14.0",

@@ -2,7 +2,7 @@ import type { ITerminalOptions } from "@xterm/xterm";
 
 import { TERMINAL_THEME_COLORS } from "@/terminal/theme-colors";
 
-interface CreateKanbanTerminalOptionsInput {
+interface CreateShuvbanTerminalOptionsInput {
 	cursorColor: string;
 	isMacPlatform: boolean;
 	terminalBackgroundColor: string;
@@ -12,11 +12,11 @@ const TERMINAL_WORD_SEPARATOR = " ()[]{}',\"`";
 const TERMINAL_FONT_FAMILY =
 	"'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'SF Mono', Menlo, Monaco, 'Courier New', monospace";
 
-export function createKanbanTerminalOptions({
+export function createShuvbanTerminalOptions({
 	cursorColor,
 	isMacPlatform,
 	terminalBackgroundColor,
-}: CreateKanbanTerminalOptionsInput): ITerminalOptions {
+}: CreateShuvbanTerminalOptionsInput): ITerminalOptions {
 	return {
 		allowProposedApi: true,
 		allowTransparency: false,

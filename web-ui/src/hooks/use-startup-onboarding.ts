@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { isSelectedAgentAuthenticated, shouldShowStartupOnboardingDialog } from "@/runtime/onboarding";
+import { shouldShowStartupOnboardingDialog } from "@/runtime/onboarding";
 import { saveRuntimeConfig as saveRuntimeConfigQuery } from "@/runtime/runtime-config-query";
 import type { RuntimeAgentId, RuntimeConfigResponse } from "@/runtime/types";
 import { LocalStorageKey } from "@/storage/local-storage-store";
@@ -24,7 +24,6 @@ export interface UseStartupOnboardingResult {
 	handleOpenStartupOnboardingDialog: () => void;
 	handleCloseStartupOnboardingDialog: () => void;
 	handleSelectOnboardingAgent: (agentId: RuntimeAgentId) => Promise<AgentSelectionResult>;
-	handleOnboardingClineSetupSaved: () => void;
 }
 
 export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseStartupOnboardingResult {
@@ -42,10 +41,6 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 	const [hasShownOnboardingDialog, setHasShownOnboardingDialog] = useBooleanLocalStorageValue(
 		LocalStorageKey.OnboardingDialogShown,
 		false,
-	);
-	const selectedAgentAuthenticated = isSelectedAgentAuthenticated(
-		runtimeProjectConfig?.selectedAgentId,
-		runtimeProjectConfig?.clineProviderSettings,
 	);
 
 	useEffect(() => {
@@ -70,7 +65,6 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 			shouldShowStartupOnboardingDialog({
 				hasShownOnboardingDialog,
 				isTaskAgentReady,
-				isSelectedAgentAuthenticated: selectedAgentAuthenticated,
 			}),
 		);
 	}, [
@@ -80,7 +74,6 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 		isRuntimeProjectConfigLoading,
 		isTaskAgentReady,
 		runtimeProjectConfig,
-		selectedAgentAuthenticated,
 	]);
 
 	const handleOpenStartupOnboardingDialog = useCallback(() => {
@@ -113,16 +106,10 @@ export function useStartupOnboarding(options: UseStartupOnboardingOptions): UseS
 		[currentProjectId, refreshRuntimeProjectConfig, refreshSettingsRuntimeProjectConfig],
 	);
 
-	const handleOnboardingClineSetupSaved = useCallback(() => {
-		refreshRuntimeProjectConfig();
-		refreshSettingsRuntimeProjectConfig();
-	}, [refreshRuntimeProjectConfig, refreshSettingsRuntimeProjectConfig]);
-
 	return {
 		isStartupOnboardingDialogOpen,
 		handleOpenStartupOnboardingDialog,
 		handleCloseStartupOnboardingDialog,
 		handleSelectOnboardingAgent,
-		handleOnboardingClineSetupSaved,
 	};
 }

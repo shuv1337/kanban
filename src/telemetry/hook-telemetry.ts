@@ -1,6 +1,6 @@
 /**
  * Hook telemetry module for durable, file-based logging of hook delivery events.
- * Writes structured JSONL records to ~/.cline/kanban/hooks/<agent>/logs/<workspace>/<task>.jsonl
+ * Writes structured JSONL records to ~/.shuvban/hooks/<agent>/logs/<workspace>/<task>.jsonl
  * This provides the primary observable sink for Phase 1 pi hook instrumentation.
  */
 import { mkdir, writeFile } from "node:fs/promises";

@@ -1,6 +1,6 @@
-// Persists Kanban-owned runtime preferences on disk.
-// This module should store Kanban settings such as selected agents,
-// shortcuts, and prompt templates, not SDK-owned Cline secrets or OAuth data.
+// Persists Shuvban-owned runtime preferences on disk.
+// This module should store Shuvban settings such as selected agents,
+// shortcuts, and prompt templates, not external provider secrets or OAuth data.
 import { readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -47,13 +47,11 @@ export interface RuntimeConfigUpdateInput {
 	openPrPromptTemplate?: string;
 }
 
-const RUNTIME_HOME_PARENT_DIR = ".cline";
-const RUNTIME_HOME_DIR = "kanban";
+const RUNTIME_HOME_DIR = ".shuvban";
 const CONFIG_FILENAME = "config.json";
-const PROJECT_CONFIG_PARENT_DIR = ".cline";
-const PROJECT_CONFIG_DIR = "kanban";
+const PROJECT_CONFIG_DIR = ".shuvban";
 const PROJECT_CONFIG_FILENAME = "config.json";
-const DEFAULT_AGENT_ID: RuntimeAgentId = "cline";
+const DEFAULT_AGENT_ID: RuntimeAgentId = "claude";
 const AUTO_SELECT_AGENT_PRIORITY: readonly RuntimeAgentId[] = ["claude", "codex"];
 const DEFAULT_AGENT_AUTONOMOUS_MODE_ENABLED = true;
 const DEFAULT_READY_FOR_REVIEW_NOTIFICATIONS_ENABLED = true;
@@ -70,7 +68,7 @@ Steps:
    - If branch {{base_ref}} is checked out in path P, use that P.
    - If not checked out anywhere, use current worktree as P by checking out {{base_ref}} there.
 3. In P, verify current branch is {{base_ref}}.
-4. If P has uncommitted changes, stash them: git -C P stash push -u -m "kanban-pre-cherry-pick"
+4. If P has uncommitted changes, stash them: git -C P stash push -u -m "shuvban-pre-cherry-pick"
 5. Cherry-pick the task commit into P.
 6. If cherry-pick conflicts, resolve carefully, preserving both the intended task changes and existing user edits.
 7. If a stash was created, restore it with: git -C P stash pop
@@ -111,7 +109,7 @@ export function pickBestInstalledAgentIdFromDetected(detectedCommands: readonly 
 }
 
 function getRuntimeHomePath(): string {
-	return join(homedir(), RUNTIME_HOME_PARENT_DIR, RUNTIME_HOME_DIR);
+	return join(homedir(), RUNTIME_HOME_DIR);
 }
 
 function normalizeAgentId(agentId: RuntimeAgentId | string | null | undefined): RuntimeAgentId {
@@ -195,7 +193,7 @@ export function getRuntimeGlobalConfigPath(): string {
 }
 
 export function getRuntimeProjectConfigPath(cwd: string): string {
-	return join(resolve(cwd), PROJECT_CONFIG_PARENT_DIR, PROJECT_CONFIG_DIR, PROJECT_CONFIG_FILENAME);
+	return join(resolve(cwd), PROJECT_CONFIG_DIR, PROJECT_CONFIG_FILENAME);
 }
 
 interface RuntimeConfigPaths {

@@ -3,7 +3,7 @@ process.on("message", (message) => {
 		return;
 	}
 
-	if (message.type !== "kanban.shutdown") {
+	if (message.type !== "shuvban.shutdown") {
 		return;
 	}
 

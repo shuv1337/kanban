@@ -69,12 +69,15 @@ describe("createHooksApi - pi hook semantics", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(mockApplyHookActivity).toHaveBeenCalledWith("task-pi-1", expect.objectContaining({
-			source: "pi",
-			hookEventName: "tool_execution_start",
-			toolName: "Read",
-			activityText: "Using Read: src/main.ts",
-		}));
+		expect(mockApplyHookActivity).toHaveBeenCalledWith(
+			"task-pi-1",
+			expect.objectContaining({
+				source: "pi",
+				hookEventName: "tool_execution_start",
+				toolName: "Read",
+				activityText: "Using Read: src/main.ts",
+			}),
+		);
 	});
 
 	it("pi completion via agent_end moves task to awaiting_review", async () => {
@@ -93,7 +96,7 @@ describe("createHooksApi - pi hook semantics", () => {
 			},
 			latestTurnCheckpoint: {
 				turn: 1,
-				ref: "refs/kanban/checkpoints/task-pi-1/turn/1",
+				ref: "refs/shuvban/checkpoints/task-pi-1/turn/1",
 				commit: "abc1234",
 				createdAt: Date.now(),
 			},
@@ -148,7 +151,7 @@ describe("createHooksApi - pi hook semantics", () => {
 					reviewReason: "hook",
 					latestTurnCheckpoint: {
 						turn: 2,
-						ref: "refs/kanban/checkpoints/task-pi-1/turn/2",
+						ref: "refs/shuvban/checkpoints/task-pi-1/turn/2",
 						commit: "def5678",
 						createdAt: Date.now(),
 					},
@@ -247,11 +250,14 @@ describe("createHooksApi - pi hook semantics", () => {
 		});
 
 		expect(response).toEqual({ ok: true });
-		expect(mockApplyHookActivity).toHaveBeenCalledWith("task-pi-1", expect.objectContaining({
-			finalMessage: "Task completed successfully",
-			source: "pi",
-			hookEventName: "agent_end",
-		}));
+		expect(mockApplyHookActivity).toHaveBeenCalledWith(
+			"task-pi-1",
+			expect.objectContaining({
+				finalMessage: "Task completed successfully",
+				source: "pi",
+				hookEventName: "agent_end",
+			}),
+		);
 	});
 
 	it("ignores to_review for non-running states", async () => {

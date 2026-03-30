@@ -1,6 +1,6 @@
 {
-	"name": "Cline",
-	"short_name": "Cline",
+	"name": "Shuvban",
+	"short_name": "Shuvban",
 	"start_url": "/",
 	"display": "standalone",
 	"display_override": ["window-controls-overlay"],
