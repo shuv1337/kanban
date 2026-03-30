@@ -1,12 +1,11 @@
 import * as Collapsible from "@radix-ui/react-collapsible";
-import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
-import { type ReactNode, useCallback, useRef, useState } from "react";
-
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { ChevronDown, ChevronUp, Ellipsis, Plus } from "lucide-react";
+import { type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ClineIcon } from "@/components/ui/cline-icon";
 import { cn } from "@/components/ui/cn";
 import { openFeaturebaseFeedbackWidget } from "@/hooks/use-featurebase-feedback-widget";
-import { useUnmount, useWindowEvent } from "@/utils/react-use";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -20,35 +19,46 @@ import {
 import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
 import type { RuntimeProjectSummary } from "@/runtime/types";
+import { LocalStorageKey, readLocalStorageItem, writeLocalStorageItem } from "@/storage/local-storage-store";
 import { formatPathForDisplay } from "@/utils/path-display";
 import { isMacPlatform, modifierKeyLabel } from "@/utils/platform";
+import { useUnmount, useWindowEvent } from "@/utils/react-use";
 
-const SIDEBAR_MIN_WIDTH = 200;
-const SIDEBAR_MAX_WIDTH = 600;
-const SIDEBAR_DEFAULT_WIDTH = 280;
-const SIDEBAR_WIDTH_STORAGE_KEY = "kb-sidebar-width";
+const COLLAPSED_WIDTH = 48;
+const SIDEBAR_COLLAPSE_THRESHOLD = 120;
+const SIDEBAR_MIN_EXPANDED_WIDTH = 200;
+const SIDEBAR_MAX_EXPANDED_WIDTH = 600;
+const SIDEBAR_DEFAULT_EXPANDED_WIDTH_FALLBACK = 280;
+const BOARD_SURFACE_HORIZONTAL_PADDING_PX = 16;
+const BOARD_SURFACE_COLUMN_GAPS_PX = 24;
+const BOARD_SURFACE_HORIZONTAL_CHROME_PX = BOARD_SURFACE_HORIZONTAL_PADDING_PX + BOARD_SURFACE_COLUMN_GAPS_PX;
 
-function loadSidebarWidth(): number {
-	try {
-		const stored = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
-		if (stored) {
-			const parsed = Number(stored);
-			if (Number.isFinite(parsed)) {
-				return Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, parsed));
-			}
-		}
-	} catch {
-		// ignore
-	}
-	return SIDEBAR_DEFAULT_WIDTH;
+function clampExpandedSidebarWidth(width: number): number {
+	return Math.max(SIDEBAR_MIN_EXPANDED_WIDTH, Math.min(SIDEBAR_MAX_EXPANDED_WIDTH, width));
 }
 
-function saveSidebarWidth(width: number): void {
-	try {
-		localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(width));
-	} catch {
-		// ignore
+function getDefaultExpandedSidebarWidth(): number {
+	if (typeof window === "undefined" || !Number.isFinite(window.innerWidth)) {
+		return SIDEBAR_DEFAULT_EXPANDED_WIDTH_FALLBACK;
 	}
+	const proportionalWidth = Math.round((window.innerWidth - BOARD_SURFACE_HORIZONTAL_CHROME_PX) / 5);
+	return clampExpandedSidebarWidth(proportionalWidth);
+}
+
+function loadExpandedSidebarWidth(): number {
+	const storedValue = readLocalStorageItem(LocalStorageKey.ProjectNavigationPanelWidth);
+	if (!storedValue) {
+		return getDefaultExpandedSidebarWidth();
+	}
+	const parsedWidth = Number(storedValue);
+	if (!Number.isFinite(parsedWidth)) {
+		return getDefaultExpandedSidebarWidth();
+	}
+	return clampExpandedSidebarWidth(parsedWidth);
+}
+
+function loadSidebarCollapsed(): boolean {
+	return readLocalStorageItem(LocalStorageKey.ProjectNavigationPanelCollapsed) === "true";
 }
 
 interface TaskCountBadge {
@@ -86,42 +96,68 @@ export function ProjectNavigationPanel({
 }): React.ReactElement {
 	const sortedProjects = [...projects].sort((a, b) => a.path.localeCompare(b.path));
 
-	// Resize state
-	const [width, setWidth] = useState(loadSidebarWidth);
+	const [pendingProjectRemoval, setPendingProjectRemoval] = useState<RuntimeProjectSummary | null>(null);
+	const isProjectRemovalPending = pendingProjectRemoval !== null && removingProjectId === pendingProjectRemoval.id;
+	const pendingProjectTaskCount = pendingProjectRemoval
+		? pendingProjectRemoval.taskCounts.backlog +
+			pendingProjectRemoval.taskCounts.in_progress +
+			pendingProjectRemoval.taskCounts.review +
+			pendingProjectRemoval.taskCounts.trash
+		: 0;
+
+	const [sidebarWidth, setSidebarWidth] = useState(loadExpandedSidebarWidth);
+	const [isCollapsed, setIsCollapsed] = useState(loadSidebarCollapsed);
 	const [isDragging, setIsDragging] = useState(false);
-	const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
+	const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 	const previousBodyStyleRef = useRef<{ userSelect: string; cursor: string } | null>(null);
+
+	const setSidebarCollapsed = useCallback((collapsed: boolean) => {
+		setIsCollapsed(collapsed);
+		writeLocalStorageItem(LocalStorageKey.ProjectNavigationPanelCollapsed, String(collapsed));
+	}, []);
+
+	const setExpandedSidebarWidth = useCallback((width: number) => {
+		const normalizedWidth = clampExpandedSidebarWidth(width);
+		setSidebarWidth(normalizedWidth);
+		writeLocalStorageItem(LocalStorageKey.ProjectNavigationPanelWidth, String(normalizedWidth));
+	}, []);
 
 	const stopDrag = useCallback(() => {
 		setIsDragging(false);
-		const prev = previousBodyStyleRef.current;
-		if (prev) {
-			document.body.style.userSelect = prev.userSelect;
-			document.body.style.cursor = prev.cursor;
+		const previousStyle = previousBodyStyleRef.current;
+		if (previousStyle) {
+			document.body.style.userSelect = previousStyle.userSelect;
+			document.body.style.cursor = previousStyle.cursor;
 			previousBodyStyleRef.current = null;
 		}
-		dragStateRef.current = null;
+		dragRef.current = null;
 	}, []);
 
-	useUnmount(() => {
-		stopDrag();
-	});
+	useUnmount(stopDrag);
 
 	const handleMouseMove = useCallback(
 		(event: MouseEvent) => {
 			if (!isDragging) {
 				return;
 			}
-			const dragState = dragStateRef.current;
+			const dragState = dragRef.current;
 			if (!dragState) {
 				return;
 			}
-			const deltaX = event.clientX - dragState.startX;
-			const nextWidth = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, dragState.startWidth + deltaX));
-			setWidth(nextWidth);
-			saveSidebarWidth(nextWidth);
+			const delta = event.clientX - dragState.startX;
+			const newWidth = dragState.startWidth + delta;
+			if (newWidth < SIDEBAR_COLLAPSE_THRESHOLD) {
+				if (!isCollapsed) {
+					setSidebarCollapsed(true);
+				}
+				return;
+			}
+			if (isCollapsed) {
+				setSidebarCollapsed(false);
+			}
+			setExpandedSidebarWidth(newWidth);
 		},
-		[isDragging],
+		[isCollapsed, isDragging, setExpandedSidebarWidth, setSidebarCollapsed],
 	);
 
 	const handleMouseUp = useCallback(() => {
@@ -134,13 +170,13 @@ export function ProjectNavigationPanel({
 	useWindowEvent("mousemove", isDragging ? handleMouseMove : null);
 	useWindowEvent("mouseup", isDragging ? handleMouseUp : null);
 
-	const handleResizeMouseDown = useCallback(
-		(event: React.MouseEvent<HTMLDivElement>) => {
-			event.preventDefault();
+	const startDrag = useCallback(
+		(e: ReactMouseEvent) => {
+			e.preventDefault();
 			if (isDragging) {
 				stopDrag();
 			}
-			dragStateRef.current = { startX: event.clientX, startWidth: width };
+			dragRef.current = { startX: e.clientX, startWidth: isCollapsed ? COLLAPSED_WIDTH : sidebarWidth };
 			setIsDragging(true);
 			previousBodyStyleRef.current = {
 				userSelect: document.body.style.userSelect,
@@ -149,25 +185,66 @@ export function ProjectNavigationPanel({
 			document.body.style.userSelect = "none";
 			document.body.style.cursor = "ew-resize";
 		},
-		[width, isDragging, stopDrag],
+		[isCollapsed, isDragging, sidebarWidth, stopDrag],
 	);
 
-	const [pendingProjectRemoval, setPendingProjectRemoval] = useState<RuntimeProjectSummary | null>(null);
-	const isProjectRemovalPending = pendingProjectRemoval !== null && removingProjectId === pendingProjectRemoval.id;
-	const pendingProjectTaskCount = pendingProjectRemoval
-		? pendingProjectRemoval.taskCounts.backlog +
-			pendingProjectRemoval.taskCounts.in_progress +
-			pendingProjectRemoval.taskCounts.review +
-			pendingProjectRemoval.taskCounts.trash
-		: 0;
+	if (isCollapsed) {
+		return (
+			<aside
+				className="flex flex-col items-center min-h-0 overflow-hidden bg-surface-1 relative shrink-0 py-2 gap-1.5"
+				style={{
+					width: COLLAPSED_WIDTH,
+					minWidth: COLLAPSED_WIDTH,
+					borderRight: "1px solid var(--color-divider)",
+				}}
+			>
+				<div
+					role="separator"
+					aria-orientation="vertical"
+					aria-label="Resize sidebar"
+					onMouseDown={startDrag}
+					className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10 hover:bg-accent/20"
+				/>
+				{sortedProjects.map((project) => {
+					const isCurrent = currentProjectId === project.id;
+					const letter = project.name.charAt(0).toUpperCase();
+					return (
+						<button
+							key={project.id}
+							type="button"
+							title={project.name}
+							onClick={() => onSelectProject(project.id)}
+							className={cn(
+								"w-8 h-8 rounded-md text-xs font-semibold shrink-0 border-0 cursor-pointer flex items-center justify-center",
+								isCurrent
+									? "bg-accent text-white"
+									: "bg-surface-3 text-text-secondary hover:text-text-primary hover:bg-surface-4",
+							)}
+						>
+							{letter}
+						</button>
+					);
+				})}
+				<button
+					type="button"
+					title="Add project"
+					onClick={onAddProject}
+					disabled={removingProjectId !== null}
+					className="w-8 h-8 rounded-md text-xs shrink-0 border-0 cursor-pointer flex items-center justify-center bg-transparent text-text-tertiary hover:text-text-secondary hover:bg-surface-2 mt-auto"
+				>
+					<Plus size={16} />
+				</button>
+			</aside>
+		);
+	}
 
 	return (
 		<aside
-			className="relative flex flex-col min-h-0 overflow-hidden bg-surface-1"
+			className="flex flex-col min-h-0 overflow-hidden bg-surface-1 relative shrink-0"
 			style={{
-				width,
-				minWidth: SIDEBAR_MIN_WIDTH,
-				maxWidth: SIDEBAR_MAX_WIDTH,
+				width: sidebarWidth,
+				minWidth: SIDEBAR_MIN_EXPANDED_WIDTH,
+				maxWidth: SIDEBAR_MAX_EXPANDED_WIDTH,
 				borderRight: "1px solid var(--color-divider)",
 			}}
 		>
@@ -175,8 +252,8 @@ export function ProjectNavigationPanel({
 				role="separator"
 				aria-orientation="vertical"
 				aria-label="Resize sidebar"
-				onMouseDown={handleResizeMouseDown}
-				className="absolute top-0 right-0 bottom-0 z-10 w-[5px] cursor-ew-resize hover:bg-accent/30"
+				onMouseDown={startDrag}
+				className="absolute top-0 right-0 bottom-0 w-1.5 cursor-ew-resize z-10 hover:bg-accent/20"
 			/>
 			<div style={{ padding: "12px 12px 8px" }}>
 				<div>
@@ -217,8 +294,8 @@ export function ProjectNavigationPanel({
 				</div>
 				{activeSection === "agent" ? (
 					<p className="text-text-tertiary text-xs" style={{ padding: "8px 4px 0" }}>
-						Add tasks, link dependencies, break work down, and manage your board. Try asking to
-						create and link some tasks to get started.
+						Add tasks, link dependencies, break work down, and manage your board. Try asking to create and link
+						some tasks to get started.
 					</p>
 				) : null}
 			</div>
@@ -349,11 +426,12 @@ export function ProjectNavigationPanel({
 }
 
 const MOD = isMacPlatform ? "⌘" : modifierKeyLabel;
+const ALT = isMacPlatform ? "⌥" : "Alt";
 
 const ESSENTIAL_SHORTCUTS = [
 	{ keys: ["C"], label: "New task" },
 	{ keys: [MOD, "B"], label: "Start backlog tasks" },
-	{ keys: [MOD, "Shift", "S"], label: "Settings (Select Agent)" },
+	{ keys: [MOD, "Shift", "S"], label: "Settings" },
 	{ keys: ["Click", MOD], label: "Hold to link tasks" },
 	{ keys: [MOD, "G"], label: "Toggle git view" },
 	{ keys: [MOD, "J"], label: "Toggle terminal" },
@@ -361,6 +439,7 @@ const ESSENTIAL_SHORTCUTS = [
 
 const MORE_SHORTCUTS = [
 	{ keys: [MOD, "Shift", "A"], label: "Toggle plan / act" },
+	{ keys: [ALT, "Shift", "Enter"], label: "Start and open task" },
 	{ keys: [MOD, "M"], label: "Expand terminal" },
 	{ keys: ["Esc"], label: "Close / back" },
 ];
@@ -486,6 +565,7 @@ function ProjectRow({
 	const displayPath = formatPathForDisplay(project.path);
 	const isRemovingProject = removingProjectId === project.id;
 	const hasAnyProjectRemoval = removingProjectId !== null;
+	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const taskCountBadges: TaskCountBadge[] = [
 		{
 			id: "backlog",
@@ -572,19 +652,40 @@ function ProjectRow({
 					</div>
 				) : null}
 			</div>
-			<div className="kb-project-row-actions flex items-center">
-				<Button
-					variant="ghost"
-					size="sm"
-					icon={isRemovingProject ? <Spinner size={12} /> : <Trash2 size={14} />}
-					disabled={hasAnyProjectRemoval && !isRemovingProject}
-					className={isCurrent ? "text-white hover:bg-white/20 hover:text-white active:bg-white/30" : undefined}
-					onClick={(e) => {
-						e.stopPropagation();
-						onRemove(project.id);
-					}}
-					aria-label="Remove project"
-				/>
+			<div className="kb-project-row-actions flex items-center" style={isMenuOpen ? { opacity: 1 } : undefined}>
+				<DropdownMenu.Root open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+					<DropdownMenu.Trigger asChild>
+						<Button
+							variant="ghost"
+							size="sm"
+							icon={isRemovingProject ? <Spinner size={12} /> : <Ellipsis size={14} />}
+							disabled={hasAnyProjectRemoval && !isRemovingProject}
+							className={
+								isCurrent ? "text-white hover:bg-white/20 hover:text-white active:bg-white/30" : undefined
+							}
+							onClick={(e) => {
+								e.stopPropagation();
+							}}
+							aria-label="Project actions"
+						/>
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Portal>
+						<DropdownMenu.Content
+							side="bottom"
+							align="end"
+							sideOffset={4}
+							className="z-50 min-w-[140px] rounded-md border border-border-bright bg-surface-1 p-1 shadow-lg"
+							onCloseAutoFocus={(event) => event.preventDefault()}
+						>
+							<DropdownMenu.Item
+								className="flex items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] text-status-red cursor-pointer outline-none data-[highlighted]:bg-surface-3"
+								onSelect={() => onRemove(project.id)}
+							>
+								Delete
+							</DropdownMenu.Item>
+						</DropdownMenu.Content>
+					</DropdownMenu.Portal>
+				</DropdownMenu.Root>
 			</div>
 		</div>
 	);

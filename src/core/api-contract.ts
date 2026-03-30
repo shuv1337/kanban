@@ -499,10 +499,14 @@ export type RuntimeProjectShortcut = z.infer<typeof runtimeProjectShortcutSchema
 export const runtimeClineOauthProviderSchema = z.enum(["cline", "oca", "openai-codex"]);
 export type RuntimeClineOauthProvider = z.infer<typeof runtimeClineOauthProviderSchema>;
 
+export const runtimeClineReasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh"]);
+export type RuntimeClineReasoningEffort = z.infer<typeof runtimeClineReasoningEffortSchema>;
+
 export const runtimeClineProviderSettingsSchema = z.object({
 	providerId: z.string().nullable(),
 	modelId: z.string().nullable(),
 	baseUrl: z.string().nullable(),
+	reasoningEffort: runtimeClineReasoningEffortSchema.nullable().optional(),
 	apiKeyConfigured: z.boolean(),
 	oauthProvider: runtimeClineOauthProviderSchema.nullable(),
 	oauthAccessTokenConfigured: z.boolean(),
@@ -537,6 +541,9 @@ export const runtimeClineProviderCatalogItemSchema = z.object({
 	oauthSupported: z.boolean(),
 	enabled: z.boolean(),
 	defaultModelId: z.string().nullable(),
+	baseUrl: z.string().nullable(),
+	supportsBaseUrl: z.boolean(),
+	env: z.array(z.string()).optional(),
 });
 export type RuntimeClineProviderCatalogItem = z.infer<typeof runtimeClineProviderCatalogItemSchema>;
 
@@ -555,6 +562,7 @@ export const runtimeClineProviderModelSchema = z.object({
 	name: z.string(),
 	supportsVision: z.boolean().optional(),
 	supportsAttachments: z.boolean().optional(),
+	supportsReasoningEffort: z.boolean().optional(),
 });
 export type RuntimeClineProviderModel = z.infer<typeof runtimeClineProviderModelSchema>;
 
@@ -563,6 +571,32 @@ export const runtimeClineProviderModelsResponseSchema = z.object({
 	models: z.array(runtimeClineProviderModelSchema),
 });
 export type RuntimeClineProviderModelsResponse = z.infer<typeof runtimeClineProviderModelsResponseSchema>;
+
+export const runtimeClineProviderCapabilitySchema = z.enum([
+	"streaming",
+	"tools",
+	"reasoning",
+	"vision",
+	"prompt-cache",
+]);
+export type RuntimeClineProviderCapability = z.infer<typeof runtimeClineProviderCapabilitySchema>;
+
+export const runtimeClineAddProviderRequestSchema = z.object({
+	providerId: z.string(),
+	name: z.string(),
+	baseUrl: z.string(),
+	apiKey: z.string().nullable().optional(),
+	headers: z.record(z.string(), z.string()).optional(),
+	timeoutMs: z.number().int().positive().optional(),
+	models: z.array(z.string()),
+	defaultModelId: z.string().nullable().optional(),
+	modelsSourceUrl: z.string().nullable().optional(),
+	capabilities: z.array(runtimeClineProviderCapabilitySchema).optional(),
+});
+export type RuntimeClineAddProviderRequest = z.infer<typeof runtimeClineAddProviderRequestSchema>;
+
+export const runtimeClineAddProviderResponseSchema = runtimeClineProviderSettingsSchema;
+export type RuntimeClineAddProviderResponse = z.infer<typeof runtimeClineAddProviderResponseSchema>;
 
 export const runtimeClineOauthLoginRequestSchema = z.object({
 	provider: runtimeClineOauthProviderSchema,
@@ -583,6 +617,7 @@ export const runtimeClineProviderSettingsSaveRequestSchema = z.object({
 	modelId: z.string().nullable().optional(),
 	apiKey: z.string().nullable().optional(),
 	baseUrl: z.string().nullable().optional(),
+	reasoningEffort: runtimeClineReasoningEffortSchema.nullable().optional(),
 });
 export type RuntimeClineProviderSettingsSaveRequest = z.infer<typeof runtimeClineProviderSettingsSaveRequestSchema>;
 
@@ -813,6 +848,18 @@ export const runtimeTaskChatSendResponseSchema = z.object({
 });
 export type RuntimeTaskChatSendResponse = z.infer<typeof runtimeTaskChatSendResponseSchema>;
 
+export const runtimeTaskChatReloadRequestSchema = z.object({
+	taskId: z.string(),
+});
+export type RuntimeTaskChatReloadRequest = z.infer<typeof runtimeTaskChatReloadRequestSchema>;
+
+export const runtimeTaskChatReloadResponseSchema = z.object({
+	ok: z.boolean(),
+	summary: runtimeTaskSessionSummarySchema.nullable(),
+	error: z.string().optional(),
+});
+export type RuntimeTaskChatReloadResponse = z.infer<typeof runtimeTaskChatReloadResponseSchema>;
+
 export const runtimeTaskChatAbortRequestSchema = z.object({
 	taskId: z.string(),
 });
@@ -868,9 +915,22 @@ export const runtimeTerminalWsStopMessageSchema = z.object({
 });
 export type RuntimeTerminalWsStopMessage = z.infer<typeof runtimeTerminalWsStopMessageSchema>;
 
+export const runtimeTerminalWsOutputAckMessageSchema = z.object({
+	type: z.literal("output_ack"),
+	bytes: z.number().int().nonnegative(),
+});
+export type RuntimeTerminalWsOutputAckMessage = z.infer<typeof runtimeTerminalWsOutputAckMessageSchema>;
+
+export const runtimeTerminalWsRestoreCompleteMessageSchema = z.object({
+	type: z.literal("restore_complete"),
+});
+export type RuntimeTerminalWsRestoreCompleteMessage = z.infer<typeof runtimeTerminalWsRestoreCompleteMessageSchema>;
+
 export const runtimeTerminalWsClientMessageSchema = z.discriminatedUnion("type", [
 	runtimeTerminalWsResizeMessageSchema,
 	runtimeTerminalWsStopMessageSchema,
+	runtimeTerminalWsOutputAckMessageSchema,
+	runtimeTerminalWsRestoreCompleteMessageSchema,
 ]);
 export type RuntimeTerminalWsClientMessage = z.infer<typeof runtimeTerminalWsClientMessageSchema>;
 
@@ -892,10 +952,19 @@ export const runtimeTerminalWsExitMessageSchema = z.object({
 });
 export type RuntimeTerminalWsExitMessage = z.infer<typeof runtimeTerminalWsExitMessageSchema>;
 
+export const runtimeTerminalWsRestoreMessageSchema = z.object({
+	type: z.literal("restore"),
+	snapshot: z.string(),
+	cols: z.number().int().positive().nullable().optional(),
+	rows: z.number().int().positive().nullable().optional(),
+});
+export type RuntimeTerminalWsRestoreMessage = z.infer<typeof runtimeTerminalWsRestoreMessageSchema>;
+
 export const runtimeTerminalWsServerMessageSchema = z.discriminatedUnion("type", [
 	runtimeTerminalWsStateMessageSchema,
 	runtimeTerminalWsErrorMessageSchema,
 	runtimeTerminalWsExitMessageSchema,
+	runtimeTerminalWsRestoreMessageSchema,
 ]);
 export type RuntimeTerminalWsServerMessage = z.infer<typeof runtimeTerminalWsServerMessageSchema>;
 

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { applyClineSessionEvent } from "../../../src/cline-sdk/cline-event-adapter.js";
+import { applyClineSessionEvent } from "../../../src/cline-sdk/cline-event-adapter";
 import {
 	type ClineTaskMessage,
 	type ClineTaskSessionEntry,
 	createDefaultSummary,
-} from "../../../src/cline-sdk/cline-session-state.js";
-import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract.js";
+} from "../../../src/cline-sdk/cline-session-state";
+import type { RuntimeTaskSessionSummary } from "../../../src/core/api-contract";
 
 function createEntry(taskId: string): ClineTaskSessionEntry {
 	return {
@@ -90,6 +90,32 @@ describe("applyClineSessionEvent", () => {
 		expect(secondPass.summaries.at(-1)?.state).toBe("running");
 		expect(secondPass.summaries.at(-1)?.latestHookActivity?.hookEventName).toBe("assistant_delta");
 		expect(secondPass.summaries.at(-1)?.latestHookActivity?.finalMessage).toBe("world");
+	});
+
+	it("keeps the full streamed assistant message in summary metadata", () => {
+		const entry = createEntry("task-1");
+		const longText = `${"Detailed handoff sentence ".repeat(12)}tail`;
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "content_start",
+						contentType: "text",
+						text: longText,
+						accumulated: longText,
+					},
+				},
+			},
+		});
+
+		const latestHookActivity = result.summaries.at(-1)?.latestHookActivity;
+		expect(latestHookActivity?.finalMessage).toBe(longText.trim());
+		expect(latestHookActivity?.activityText?.length ?? 0).toBeLessThan(latestHookActivity?.finalMessage?.length ?? 0);
+		expect(latestHookActivity?.activityText).toContain("…");
 	});
 
 	it("transitions into and back out of awaiting review around user-attention tools", () => {
@@ -204,10 +230,7 @@ describe("applyClineSessionEvent", () => {
 						toolCallId: "tool-1",
 						toolName: "read_files",
 						input: {
-							files: [
-								{ path: "src/index.ts", start_line: 3, end_line: 8 },
-								{ path: "src/app.ts" },
-							],
+							files: [{ path: "src/index.ts", start_line: 3, end_line: 8 }, { path: "src/app.ts" }],
 						},
 					},
 				},
@@ -217,9 +240,7 @@ describe("applyClineSessionEvent", () => {
 		expect(result.summaries.at(-1)?.latestHookActivity?.activityText).toBe(
 			"Using read_files(src/index.ts:3-8, src/app.ts)",
 		);
-		expect(result.summaries.at(-1)?.latestHookActivity?.toolInputSummary).toBe(
-			"src/index.ts:3-8, src/app.ts",
-		);
+		expect(result.summaries.at(-1)?.latestHookActivity?.toolInputSummary).toBe("src/index.ts:3-8, src/app.ts");
 	});
 
 	it("converts aborted done events with pending cancel state back to idle", () => {
@@ -274,6 +295,41 @@ describe("applyClineSessionEvent", () => {
 		expect(result.messages[0]?.content).toBe("Done. Added the comment.");
 	});
 
+	it("keeps the previous preview when done events have no final text", () => {
+		const entry = createEntry("task-1");
+		entry.summary.state = "running";
+		entry.summary.latestHookActivity = {
+			activityText: "Reviewing the final diff",
+			toolName: "Read",
+			toolInputSummary: "src/index.ts",
+			finalMessage: "Reviewing the final diff",
+			hookEventName: "assistant_delta",
+			notificationType: null,
+			source: "cline-sdk",
+		};
+
+		const result = applyEvent({
+			entry,
+			event: {
+				type: "agent_event",
+				payload: {
+					sessionId: "session-1",
+					event: {
+						type: "done",
+						reason: "completed",
+					},
+				},
+			},
+		});
+
+		expect(result.entry.summary.state).toBe("awaiting_review");
+		expect(result.entry.summary.reviewReason).toBe("hook");
+		expect(result.entry.summary.latestHookActivity?.activityText).toBe("Reviewing the final diff");
+		expect(result.entry.summary.latestHookActivity?.toolName).toBe("Read");
+		expect(result.entry.summary.latestHookActivity?.toolInputSummary).toBe("src/index.ts");
+		expect(result.entry.summary.latestHookActivity?.hookEventName).toBe("agent_end");
+	});
+
 	it("keeps awaiting-review sessions in review when a stale running status event arrives", () => {
 		const entry = createEntry("task-1");
 		entry.summary.state = "awaiting_review";
@@ -307,7 +363,7 @@ describe("applyClineSessionEvent", () => {
 					sessionId: "session-1",
 					event: {
 						type: "error",
-						error: new Error("Missing API key for provider \"cline\"."),
+						error: new Error('Missing API key for provider "cline".'),
 						recoverable: true,
 						iteration: 1,
 					},

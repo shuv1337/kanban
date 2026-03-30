@@ -4,9 +4,9 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { deleteTaskWorktree, ensureTaskWorktreeIfDoesntExist } from "../../src/workspace/task-worktree.js";
-import { createGitTestEnv } from "../utilities/git-env.js";
-import { createTempDir } from "../utilities/temp-dir.js";
+import { deleteTaskWorktree, ensureTaskWorktreeIfDoesntExist } from "../../src/workspace/task-worktree";
+import { createGitTestEnv } from "../utilities/git-env";
+import { createTempDir } from "../utilities/temp-dir";
 
 function expectMirroredPathBehavior(path: string): void {
 	const exists = existsSync(path);
@@ -196,7 +196,7 @@ describe.sequential("task-worktree integration", () => {
 		});
 	});
 
-	it("skips symlinking root node_modules for root Turbopack apps", async () => {
+	it("skips symlinking root node_modules for root Next apps without a next config file", async () => {
 		await withTemporaryHome(async () => {
 			const { path: sandboxRoot, cleanup } = createTempDir("kanban-task-worktree-root-turbopack-");
 			try {
@@ -210,7 +210,7 @@ describe.sequential("task-worktree integration", () => {
 				writeFileSync(join(repoPath, "README.md"), "hello\n", "utf8");
 				writeFileSync(
 					join(repoPath, "package.json"),
-					'{\n  "scripts": {\n    "dev": "next dev --turbopack"\n  }\n}\n',
+					'{\n  "dependencies": {\n    "next": "15.0.0"\n  },\n  "scripts": {\n    "dev": "next dev"\n  }\n}\n',
 					"utf8",
 				);
 				writeFileSync(join(repoPath, ".gitignore"), "/.next/\n/node_modules/\n", "utf8");
@@ -406,12 +406,7 @@ describe.sequential("task-worktree integration", () => {
 				});
 				expect(deleted.ok).toBe(true);
 
-				const patchesDir = join(
-					process.env.HOME ?? sandboxRoot,
-					".cline",
-					"kanban",
-					"trashed-task-patches",
-				);
+				const patchesDir = join(process.env.HOME ?? sandboxRoot, ".cline", "kanban", "trashed-task-patches");
 				mkdirSync(patchesDir, { recursive: true });
 				const patchPath = join(patchesDir, `${taskId}.${createdCommit}.patch`);
 				writeFileSync(

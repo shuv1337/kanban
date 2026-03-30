@@ -1,21 +1,23 @@
 // Owns the Cline-specific settings state machine inside the settings dialog.
 // It loads provider data, drives model selection, saves settings, and runs
 // OAuth login flows so the dialog component can stay presentation-focused.
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
-
+import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
+import { getRuntimeClineProviderSettings } from "@/runtime/native-agent";
 import {
+	addClineProvider,
 	fetchClineProviderCatalog,
 	fetchClineProviderModels,
 	runClineProviderOauthLogin,
 	saveClineProviderSettings,
 } from "@/runtime/runtime-config-query";
-import { getRuntimeClineProviderSettings } from "@/runtime/native-agent";
 import type {
 	RuntimeAgentId,
 	RuntimeClineOauthProvider,
+	RuntimeClineProviderCapability,
 	RuntimeClineProviderCatalogItem,
 	RuntimeClineProviderModel,
 	RuntimeClineProviderSettings,
+	RuntimeClineReasoningEffort,
 	RuntimeConfigResponse,
 } from "@/runtime/types";
 
@@ -36,6 +38,20 @@ interface SaveProviderSettingsOverrides {
 	modelId?: string | null;
 	apiKey?: string | null;
 	baseUrl?: string | null;
+	reasoningEffort?: RuntimeClineReasoningEffort | null;
+}
+
+export interface AddClineProviderInput {
+	providerId: string;
+	name: string;
+	baseUrl: string;
+	apiKey?: string | null;
+	headers?: Record<string, string>;
+	timeoutMs?: number;
+	models: string[];
+	defaultModelId?: string | null;
+	modelsSourceUrl?: string | null;
+	capabilities?: RuntimeClineProviderCapability[];
 }
 
 export interface UseRuntimeSettingsClineControllerResult {
@@ -47,6 +63,8 @@ export interface UseRuntimeSettingsClineControllerResult {
 	setApiKey: Dispatch<SetStateAction<string>>;
 	baseUrl: string;
 	setBaseUrl: Dispatch<SetStateAction<string>>;
+	reasoningEffort: RuntimeClineReasoningEffort | "";
+	setReasoningEffort: Dispatch<SetStateAction<RuntimeClineReasoningEffort | "">>;
 	providerCatalog: RuntimeClineProviderCatalogItem[];
 	providerModels: RuntimeClineProviderModel[];
 	isLoadingProviderCatalog: boolean;
@@ -59,8 +77,10 @@ export interface UseRuntimeSettingsClineControllerResult {
 	oauthConfigured: boolean;
 	oauthAccountId: string;
 	oauthExpiresAt: string;
+	selectedModelSupportsReasoningEffort: boolean;
 	hasUnsavedChanges: boolean;
 	saveProviderSettings: (overrides?: SaveProviderSettingsOverrides) => Promise<SaveResult>;
+	addCustomProvider: (input: AddClineProviderInput) => Promise<SaveResult>;
 	runOauthLogin: () => Promise<SaveResult>;
 }
 
@@ -79,6 +99,28 @@ function normalizeBaseUrlForProvider(providerId: string, baseUrl: string | null 
 	return baseUrl ?? "";
 }
 
+function getDefaultBaseUrlForProvider(providers: RuntimeClineProviderCatalogItem[], providerId: string): string {
+	const normalizedProviderId = providerId.trim().toLowerCase();
+	if (!normalizedProviderId) {
+		return "";
+	}
+	return (
+		providers.find((provider) => provider.id.trim().toLowerCase() === normalizedProviderId)?.baseUrl?.trim() ?? ""
+	);
+}
+
+function resolveBaseUrlForProvider(
+	providers: RuntimeClineProviderCatalogItem[],
+	providerId: string,
+	baseUrl: string | null | undefined,
+): string {
+	const normalizedBaseUrl = normalizeBaseUrlForProvider(providerId, baseUrl).trim();
+	if (normalizedBaseUrl.length > 0) {
+		return normalizedBaseUrl;
+	}
+	return normalizeBaseUrlForProvider(providerId, getDefaultBaseUrlForProvider(providers, providerId));
+}
+
 function getEffectiveProviderSettings(
 	config: RuntimeConfigResponse | null,
 	override: RuntimeClineProviderSettings | null,
@@ -86,10 +128,7 @@ function getEffectiveProviderSettings(
 	return override ?? getRuntimeClineProviderSettings(config);
 }
 
-function getDefaultModelIdForProvider(
-	providers: RuntimeClineProviderCatalogItem[],
-	providerId: string,
-): string {
+function getDefaultModelIdForProvider(providers: RuntimeClineProviderCatalogItem[], providerId: string): string {
 	const normalizedProviderId = providerId.trim().toLowerCase();
 	if (!normalizedProviderId) {
 		return "";
@@ -109,6 +148,7 @@ export function useRuntimeSettingsClineController(
 	const [modelId, setModelId] = useState("");
 	const [apiKey, setApiKey] = useState("");
 	const [baseUrl, setBaseUrl] = useState("");
+	const [reasoningEffort, setReasoningEffort] = useState<RuntimeClineReasoningEffort | "">("");
 	const [providerSettingsOverride, setProviderSettingsOverride] = useState<RuntimeClineProviderSettings | null>(null);
 	const [providerCatalog, setProviderCatalog] = useState<RuntimeClineProviderCatalogItem[]>([]);
 	const [providerModels, setProviderModels] = useState<RuntimeClineProviderModel[]>([]);
@@ -120,7 +160,12 @@ export function useRuntimeSettingsClineController(
 	const configProviderSettings = getRuntimeClineProviderSettings(config);
 	const initialProviderId = effectiveProviderSettings?.providerId ?? effectiveProviderSettings?.oauthProvider ?? "";
 	const initialModelId = effectiveProviderSettings?.modelId ?? "";
-	const initialBaseUrl = normalizeBaseUrlForProvider(initialProviderId, effectiveProviderSettings?.baseUrl);
+	const initialBaseUrl = resolveBaseUrlForProvider(
+		providerCatalog,
+		initialProviderId,
+		effectiveProviderSettings?.baseUrl,
+	);
+	const initialReasoningEffort = effectiveProviderSettings?.reasoningEffort ?? "";
 	const normalizedProviderId = providerId.trim().toLowerCase();
 	const managedOauthProvider = toManagedClineOauthProvider(normalizedProviderId);
 	const isOauthProviderSelected = managedOauthProvider !== null;
@@ -128,6 +173,9 @@ export function useRuntimeSettingsClineController(
 	const oauthConfigured = effectiveProviderSettings?.oauthAccessTokenConfigured ?? false;
 	const oauthAccountId = effectiveProviderSettings?.oauthAccountId ?? "";
 	const oauthExpiresAt = effectiveProviderSettings?.oauthExpiresAt?.toString() ?? "";
+	const selectedModelSupportsReasoningEffort = useMemo(() => {
+		return providerModels.find((model) => model.id === modelId)?.supportsReasoningEffort ?? false;
+	}, [modelId, providerModels]);
 
 	const hasUnsavedChanges = useMemo(() => {
 		if (!config) {
@@ -142,8 +190,22 @@ export function useRuntimeSettingsClineController(
 		if (baseUrl.trim() !== initialBaseUrl.trim()) {
 			return true;
 		}
+		if (reasoningEffort !== initialReasoningEffort) {
+			return true;
+		}
 		return apiKey.trim().length > 0;
-	}, [apiKey, baseUrl, config, initialBaseUrl, initialModelId, initialProviderId, modelId, providerId]);
+	}, [
+		apiKey,
+		baseUrl,
+		config,
+		initialBaseUrl,
+		initialModelId,
+		initialProviderId,
+		initialReasoningEffort,
+		modelId,
+		providerId,
+		reasoningEffort,
+	]);
 
 	useEffect(() => {
 		if (!open) {
@@ -153,13 +215,15 @@ export function useRuntimeSettingsClineController(
 		setProviderId(nextProviderId);
 		setModelId(configProviderSettings.modelId ?? "");
 		setApiKey("");
-		setBaseUrl(normalizeBaseUrlForProvider(nextProviderId, configProviderSettings.baseUrl));
+		setBaseUrl(resolveBaseUrlForProvider(providerCatalog, nextProviderId, configProviderSettings.baseUrl));
+		setReasoningEffort(configProviderSettings.reasoningEffort ?? "");
 		setProviderSettingsOverride(null);
 	}, [
 		configProviderSettings.baseUrl,
 		configProviderSettings.modelId,
 		configProviderSettings.oauthProvider,
 		configProviderSettings.providerId,
+		configProviderSettings.reasoningEffort,
 		open,
 	]);
 
@@ -201,9 +265,7 @@ export function useRuntimeSettingsClineController(
 			return;
 		}
 		const defaultProvider =
-			providerCatalog.find((provider) => provider.id.trim().toLowerCase() === "cline") ??
-			providerCatalog[0] ??
-			null;
+			providerCatalog.find((provider) => provider.id.trim().toLowerCase() === "cline") ?? providerCatalog[0] ?? null;
 		if (!defaultProvider) {
 			return;
 		}
@@ -213,6 +275,7 @@ export function useRuntimeSettingsClineController(
 		}
 		setProviderId(nextProviderId);
 		setModelId(defaultProvider.defaultModelId?.trim() ?? "");
+		setBaseUrl(resolveBaseUrlForProvider(providerCatalog, nextProviderId, null));
 	}, [open, providerCatalog, providerId, selectedAgentId]);
 
 	useEffect(() => {
@@ -228,6 +291,20 @@ export function useRuntimeSettingsClineController(
 		}
 		setModelId(defaultModelId);
 	}, [modelId, open, providerCatalog, providerId, selectedAgentId]);
+
+	useEffect(() => {
+		if (!open || selectedAgentId !== "cline") {
+			return;
+		}
+		if (providerId.trim().length === 0 || baseUrl.trim().length > 0) {
+			return;
+		}
+		const defaultBaseUrl = getDefaultBaseUrlForProvider(providerCatalog, providerId);
+		if (!defaultBaseUrl) {
+			return;
+		}
+		setBaseUrl(normalizeBaseUrlForProvider(providerId, defaultBaseUrl));
+	}, [baseUrl, open, providerCatalog, providerId, selectedAgentId]);
 
 	useEffect(() => {
 		if (!open || selectedAgentId !== "cline") {
@@ -265,50 +342,94 @@ export function useRuntimeSettingsClineController(
 		};
 	}, [open, providerId, selectedAgentId, workspaceId]);
 
-	const saveProviderSettingsDraft = useCallback(async (overrides?: SaveProviderSettingsOverrides): Promise<SaveResult> => {
-		if (!overrides && !hasUnsavedChanges) {
-			return { ok: true };
-		}
-		const trimmedProviderId = (overrides?.providerId ?? providerId).trim();
-		if (trimmedProviderId.length === 0) {
-			return {
-				ok: false,
-				message: "Choose a Cline provider before saving.",
-			};
-		}
-		const trimmedBaseUrl = toManagedClineOauthProvider(trimmedProviderId)
-			? null
-			: overrides && "baseUrl" in overrides
-				? overrides.baseUrl?.trim() || null
-				: baseUrl.trim() || null;
-		const trimmedModelId =
-			overrides && "modelId" in overrides ? overrides.modelId?.trim() || null : modelId.trim() || null;
-		const trimmedApiKey =
-			overrides && "apiKey" in overrides
-				? overrides.apiKey?.trim() || null
-				: managedOauthProvider
-					? null
-					: apiKey.trim() || null;
-		try {
-			const savedSettings = await saveClineProviderSettings(workspaceId, {
-				providerId: trimmedProviderId,
-				modelId: trimmedModelId,
-				apiKey: trimmedApiKey,
-				baseUrl: trimmedBaseUrl,
-			});
-			setProviderId(savedSettings.providerId ?? savedSettings.oauthProvider ?? trimmedProviderId);
-			setModelId(savedSettings.modelId ?? "");
-			setApiKey("");
-			setBaseUrl(savedSettings.baseUrl ?? "");
-			setProviderSettingsOverride(savedSettings);
-			return { ok: true };
-		} catch (error) {
-			return {
-				ok: false,
-				message: error instanceof Error ? error.message : String(error),
-			};
-		}
-	}, [apiKey, baseUrl, hasUnsavedChanges, managedOauthProvider, modelId, providerId, workspaceId]);
+	const saveProviderSettingsDraft = useCallback(
+		async (overrides?: SaveProviderSettingsOverrides): Promise<SaveResult> => {
+			if (!overrides && !hasUnsavedChanges) {
+				return { ok: true };
+			}
+			const trimmedProviderId = (overrides?.providerId ?? providerId).trim();
+			if (trimmedProviderId.length === 0) {
+				return {
+					ok: false,
+					message: "Choose a Cline provider before saving.",
+				};
+			}
+			const trimmedBaseUrl = toManagedClineOauthProvider(trimmedProviderId)
+				? null
+				: overrides && "baseUrl" in overrides
+					? overrides.baseUrl?.trim() || null
+					: baseUrl.trim() || null;
+			const trimmedModelId =
+				overrides && "modelId" in overrides ? overrides.modelId?.trim() || null : modelId.trim() || null;
+			const trimmedApiKey =
+				overrides && "apiKey" in overrides
+					? overrides.apiKey?.trim() || null
+					: managedOauthProvider
+						? null
+						: apiKey.trim() || null;
+			const nextReasoningEffort =
+				overrides && "reasoningEffort" in overrides ? (overrides.reasoningEffort ?? null) : reasoningEffort || null;
+			try {
+				const savedSettings = await saveClineProviderSettings(workspaceId, {
+					providerId: trimmedProviderId,
+					modelId: trimmedModelId,
+					apiKey: trimmedApiKey,
+					baseUrl: trimmedBaseUrl,
+					reasoningEffort: nextReasoningEffort,
+				});
+				setProviderId(savedSettings.providerId ?? savedSettings.oauthProvider ?? trimmedProviderId);
+				setModelId(savedSettings.modelId ?? "");
+				setApiKey("");
+				setBaseUrl(savedSettings.baseUrl ?? "");
+				setReasoningEffort(savedSettings.reasoningEffort ?? "");
+				setProviderSettingsOverride(savedSettings);
+				return { ok: true };
+			} catch (error) {
+				return {
+					ok: false,
+					message: error instanceof Error ? error.message : String(error),
+				};
+			}
+		},
+		[apiKey, baseUrl, hasUnsavedChanges, managedOauthProvider, modelId, providerId, reasoningEffort, workspaceId],
+	);
+
+	const addCustomProvider = useCallback(
+		async (input: AddClineProviderInput): Promise<SaveResult> => {
+			try {
+				const savedSettings = await addClineProvider(workspaceId, input);
+				const nextProviderId = savedSettings.providerId ?? input.providerId.trim().toLowerCase();
+				setProviderId(nextProviderId);
+				setModelId(savedSettings.modelId ?? input.defaultModelId?.trim() ?? input.models[0] ?? "");
+				setApiKey("");
+				setBaseUrl(savedSettings.baseUrl ?? input.baseUrl);
+				setReasoningEffort(savedSettings.reasoningEffort ?? "");
+				setProviderSettingsOverride(savedSettings);
+
+				setIsLoadingProviderCatalog(true);
+				try {
+					setProviderCatalog(await fetchClineProviderCatalog(workspaceId));
+				} finally {
+					setIsLoadingProviderCatalog(false);
+				}
+
+				setIsLoadingProviderModels(true);
+				try {
+					setProviderModels(await fetchClineProviderModels(workspaceId, nextProviderId));
+				} finally {
+					setIsLoadingProviderModels(false);
+				}
+
+				return { ok: true };
+			} catch (error) {
+				return {
+					ok: false,
+					message: error instanceof Error ? error.message : String(error),
+				};
+			}
+		},
+		[workspaceId],
+	);
 
 	const runOauthLogin = useCallback(async (): Promise<SaveResult> => {
 		if (!managedOauthProvider) {
@@ -335,6 +456,7 @@ export function useRuntimeSettingsClineController(
 				setModelId(nextSettings.modelId ?? getDefaultModelIdForProvider(providerCatalog, nextProviderId));
 				setApiKey("");
 				setBaseUrl(nextSettings.baseUrl ?? "");
+				setReasoningEffort(nextSettings.reasoningEffort ?? "");
 			}
 			setProviderSettingsOverride(nextSettings);
 			return { ok: true };
@@ -357,6 +479,8 @@ export function useRuntimeSettingsClineController(
 		setApiKey,
 		baseUrl,
 		setBaseUrl,
+		reasoningEffort,
+		setReasoningEffort,
 		providerCatalog,
 		providerModels,
 		isLoadingProviderCatalog,
@@ -369,8 +493,10 @@ export function useRuntimeSettingsClineController(
 		oauthConfigured,
 		oauthAccountId,
 		oauthExpiresAt,
+		selectedModelSupportsReasoningEffort,
 		hasUnsavedChanges,
 		saveProviderSettings: saveProviderSettingsDraft,
+		addCustomProvider,
 		runOauthLogin,
 	};
 }

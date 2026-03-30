@@ -2,19 +2,16 @@
 // It keeps one in-memory session identity stable per workspace while the app
 // stays open and rotates it only when the selected agent configuration
 // meaningfully changes.
+
+import { createHomeAgentSessionId, isHomeAgentSessionIdForWorkspace } from "@runtime-home-agent-session";
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useMemo, useRef } from "react";
-import { createHomeAgentSessionId, isHomeAgentSessionIdForWorkspace } from "@runtime-home-agent-session";
 
 import { notifyError } from "@/components/app-toaster";
 import { getRuntimeClineProviderSettings, isNativeClineAgentSelected } from "@/runtime/native-agent";
 import { estimateTaskSessionGeometry } from "@/runtime/task-session-geometry";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
-import type {
-	RuntimeConfigResponse,
-	RuntimeGitRepositoryInfo,
-	RuntimeTaskSessionSummary,
-} from "@/runtime/types";
+import type { RuntimeConfigResponse, RuntimeGitRepositoryInfo, RuntimeTaskSessionSummary } from "@/runtime/types";
 
 type HomeAgentPanelMode = "chat" | "terminal";
 
@@ -50,14 +47,14 @@ interface HomeAgentWorkspaceDescriptor {
 	taskId: string;
 }
 
-function buildClineDescriptor(config: RuntimeConfigResponse, clineSessionContextVersion: number): string {
+function buildClineDescriptor(config: RuntimeConfigResponse): string {
 	const clineProviderSettings = getRuntimeClineProviderSettings(config);
 	return JSON.stringify({
 		agentId: config.selectedAgentId,
 		providerId: clineProviderSettings.providerId ?? clineProviderSettings.oauthProvider ?? "",
 		modelId: clineProviderSettings.modelId ?? "",
 		baseUrl: clineProviderSettings.baseUrl ?? "",
-		clineSessionContextVersion,
+		reasoningEffort: clineProviderSettings.reasoningEffort ?? null,
 	});
 }
 
@@ -124,6 +121,7 @@ export function useHomeAgentSession({
 	const desiredTaskIdByWorkspaceRef = useRef(new Map<string, string>());
 	const startedSessionKeysRef = useRef(new Set<string>());
 	const pendingStartRequestIdsRef = useRef(new Map<string, number>());
+	const previousClineSessionContextVersionByWorkspaceRef = useRef(new Map<string, number>());
 	const nextStartRequestIdRef = useRef(0);
 	const disposedRef = useRef(false);
 	const clineProviderSettings = getRuntimeClineProviderSettings(runtimeProjectConfig);
@@ -141,7 +139,7 @@ export function useHomeAgentSession({
 		let descriptorKey: string;
 		if (isNativeClineAgentSelected(runtimeProjectConfig.selectedAgentId)) {
 			panelMode = "chat";
-			descriptorKey = buildClineDescriptor(runtimeProjectConfig, clineSessionContextVersion);
+			descriptorKey = buildClineDescriptor(runtimeProjectConfig);
 		} else {
 			if (!runtimeProjectConfig.effectiveCommand) {
 				return null;
@@ -175,10 +173,10 @@ export function useHomeAgentSession({
 			taskId,
 		};
 	}, [
-		clineSessionContextVersion,
 		currentProjectId,
 		clineProviderSettings.baseUrl,
 		clineProviderSettings.modelId,
+		clineProviderSettings.reasoningEffort,
 		clineProviderSettings.oauthProvider,
 		clineProviderSettings.providerId,
 		runtimeProjectConfig?.effectiveCommand,
@@ -239,6 +237,52 @@ export function useHomeAgentSession({
 		});
 	}, [currentProjectId, descriptorTaskId, hasLoadedRuntimeProjectConfig, setSessionSummaries]);
 
+	// When MCP settings or auth change, the runtime bumps the Cline session context version.
+	// Reload the existing home chat in place so it keeps the same sidebar task id and messages,
+	// but restarts the underlying Cline session with a fresh MCP tool bundle.
+	useEffect(() => {
+		if (!currentProjectId || !descriptor || descriptor.panelMode !== "chat") {
+			return;
+		}
+
+		const previousVersion = previousClineSessionContextVersionByWorkspaceRef.current.get(currentProjectId);
+		previousClineSessionContextVersionByWorkspaceRef.current.set(currentProjectId, clineSessionContextVersion);
+
+		if (previousVersion === undefined || previousVersion === clineSessionContextVersion) {
+			return;
+		}
+
+		if (!sessionSummaries[descriptor.taskId]) {
+			return;
+		}
+
+		let cancelled = false;
+		void getRuntimeTrpcClient(currentProjectId)
+			.runtime.reloadTaskChatSession.mutate({
+				taskId: descriptor.taskId,
+			})
+			.then((response) => {
+				if (cancelled || disposedRef.current) {
+					return;
+				}
+				if (!response.ok || !response.summary) {
+					throw new Error(response.error ?? "Could not reload home agent session.");
+				}
+				upsertSessionSummary(response.summary);
+			})
+			.catch((error) => {
+				if (cancelled || disposedRef.current) {
+					return;
+				}
+				const message = error instanceof Error ? error.message : String(error);
+				notifyError(message);
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [clineSessionContextVersion, currentProjectId, descriptor, sessionSummaries, upsertSessionSummary]);
+
 	useEffect(() => {
 		if (!currentProjectId || !descriptor || descriptor.panelMode !== "terminal") {
 			return;
@@ -255,11 +299,6 @@ export function useHomeAgentSession({
 		}
 
 		if (startedSessionKeysRef.current.has(sessionKey)) {
-			return;
-		}
-
-		if (sessionSummaries[session.taskId]) {
-			startedSessionKeysRef.current.add(sessionKey);
 			return;
 		}
 
@@ -308,7 +347,10 @@ export function useHomeAgentSession({
 					return;
 				}
 				pendingStartRequestIdsRef.current.delete(sessionKey);
-				if (disposedRef.current || desiredTaskIdByWorkspaceRef.current.get(session.workspaceId) !== session.taskId) {
+				if (
+					disposedRef.current ||
+					desiredTaskIdByWorkspaceRef.current.get(session.workspaceId) !== session.taskId
+				) {
 					return;
 				}
 				const message = error instanceof Error ? error.message : String(error);
@@ -320,17 +362,11 @@ export function useHomeAgentSession({
 	useEffect(() => {
 		return () => {
 			disposedRef.current = true;
-			const sessionsToStop = Array.from(desiredTaskIdByWorkspaceRef.current.entries(), ([workspaceId, taskId]) => ({
-				workspaceId,
-				taskId,
-			}));
 			desiredTaskIdByWorkspaceRef.current.clear();
 			homeDescriptorByWorkspaceRef.current.clear();
 			startedSessionKeysRef.current.clear();
 			pendingStartRequestIdsRef.current.clear();
-			for (const session of sessionsToStop) {
-				void stopHomeAgentSession(session);
-			}
+			previousClineSessionContextVersionByWorkspaceRef.current.clear();
 		};
 	}, []);
 

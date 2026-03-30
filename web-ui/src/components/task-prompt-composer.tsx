@@ -1,4 +1,4 @@
-import { Paperclip } from "lucide-react";
+import { ImagePlus, Paperclip } from "lucide-react";
 import type { ChangeEvent, ClipboardEvent, DragEvent, KeyboardEvent, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -7,10 +7,16 @@ import {
 	buildMentionInsertText,
 	detectActiveClineComposerToken,
 } from "@/components/detail-panels/cline-chat-composer-completion";
-import { InlineCompletionPicker, type InlineCompletionItem } from "@/components/inline-completion-picker";
-import { ACCEPTED_TASK_IMAGE_INPUT_ACCEPT, collectImageFilesFromDataTransfer, extractImagesFromDataTransfer, fileToTaskImage } from "@/components/task-image-input-utils";
+import { type InlineCompletionItem, InlineCompletionPicker } from "@/components/inline-completion-picker";
+import {
+	ACCEPTED_TASK_IMAGE_INPUT_ACCEPT,
+	collectImageFilesFromDataTransfer,
+	extractImagesFromDataTransfer,
+	fileToTaskImage,
+} from "@/components/task-image-input-utils";
 import { TaskImageStrip } from "@/components/task-image-strip";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/cn";
 import { getRuntimeTrpcClient } from "@/runtime/trpc-client";
 import type { TaskImage } from "@/types";
 import { useDebouncedEffect } from "@/utils/react-use";
@@ -230,7 +236,15 @@ export function TaskPromptComposer({
 				onEscape?.();
 			}
 		},
-		[applySuggestion, isSuggestionPickerOpen, onEscape, onSubmit, onSubmitAndStart, selectedSuggestionIndex, suggestions],
+		[
+			applySuggestion,
+			isSuggestionPickerOpen,
+			onEscape,
+			onSubmit,
+			onSubmitAndStart,
+			selectedSuggestionIndex,
+			suggestions,
+		],
 	);
 
 	const appendImages = useCallback(
@@ -262,7 +276,7 @@ export function TaskPromptComposer({
 	);
 
 	const handleDrop = useCallback(
-		(event: DragEvent<HTMLTextAreaElement>) => {
+		(event: DragEvent<HTMLDivElement>) => {
 			setIsDragOver(false);
 			if (!onImagesChange || !event.dataTransfer) {
 				return;
@@ -281,7 +295,7 @@ export function TaskPromptComposer({
 	);
 
 	const handleDragOver = useCallback(
-		(event: DragEvent<HTMLTextAreaElement>) => {
+		(event: DragEvent<HTMLDivElement>) => {
 			if (!onImagesChange) {
 				return;
 			}
@@ -295,7 +309,12 @@ export function TaskPromptComposer({
 		[onImagesChange],
 	);
 
-	const handleDragLeave = useCallback(() => {
+	const handleDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
+		// Only clear drag state when leaving the drop zone container,
+		// not when moving between child elements within it.
+		if (event.currentTarget.contains(event.relatedTarget as Node)) {
+			return;
+		}
 		setIsDragOver(false);
 	}, []);
 
@@ -335,59 +354,59 @@ export function TaskPromptComposer({
 
 	return (
 		<div>
-			<InlineCompletionPicker
-				open={showSuggestions}
-				items={suggestions}
-				selectedIndex={selectedSuggestionIndex}
-				onSelectItem={applySuggestion}
-				onHoverItem={setSelectedSuggestionIndex}
-				isLoading={isMentionSearchLoading}
-				loadingMessage="Loading files..."
-				emptyMessage="No matching files."
-			>
-				<textarea
-					id={id}
-					ref={textareaRef}
-					value={value}
-					onChange={(event) => {
-						onValueChange(event.target.value);
-						setCursorIndex(event.target.selectionStart ?? event.target.value.length);
-					}}
-					onKeyDown={handleTextareaKeyDown}
-					onClick={(event) =>
-						setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
-					}
-					onKeyUp={(event) =>
-						setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
-					}
-					onPaste={handlePaste}
-					onDrop={handleDrop}
-					onDragOver={handleDragOver}
-					onDragLeave={handleDragLeave}
-					placeholder={placeholder ?? "Describe the task"}
-					disabled={disabled}
-					className="w-full rounded-md border border-border-bright bg-surface-3 p-3 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none"
-					style={{
-						minHeight: 80,
-						maxHeight: TEXTAREA_MAX_HEIGHT,
-						resize: "none",
-						overflowY: "auto",
-						...(isDragOver
-							? {
-								outline: "2px dashed var(--accent)",
-								outlineOffset: -2,
-							}
-							: {}),
-					}}
-				/>
-			</InlineCompletionPicker>
+			<div className="relative" onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
+				<InlineCompletionPicker
+					open={showSuggestions}
+					items={suggestions}
+					selectedIndex={selectedSuggestionIndex}
+					onSelectItem={applySuggestion}
+					onHoverItem={setSelectedSuggestionIndex}
+					isLoading={isMentionSearchLoading}
+					loadingMessage="Loading files..."
+					emptyMessage="No matching files."
+				>
+					<textarea
+						id={id}
+						ref={textareaRef}
+						value={value}
+						onChange={(event) => {
+							onValueChange(event.target.value);
+							setCursorIndex(event.target.selectionStart ?? event.target.value.length);
+						}}
+						onKeyDown={handleTextareaKeyDown}
+						onClick={(event) =>
+							setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
+						}
+						onKeyUp={(event) =>
+							setCursorIndex(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
+						}
+						onPaste={handlePaste}
+						placeholder={placeholder ?? "Describe the task"}
+						disabled={disabled}
+						className={cn(
+							"w-full rounded-md border bg-surface-3 p-3 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-focus focus:outline-none",
+							isDragOver ? "border-accent border-dashed" : "border-border-bright",
+						)}
+						style={{
+							minHeight: 80,
+							maxHeight: TEXTAREA_MAX_HEIGHT,
+							resize: "none",
+							overflowY: "auto",
+						}}
+					/>
+				</InlineCompletionPicker>
+				{isDragOver ? (
+					<div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-accent/5">
+						<div className="flex items-center gap-1.5 text-[12px] text-accent font-medium">
+							<ImagePlus size={14} />
+							<span>Drop image here</span>
+						</div>
+					</div>
+				) : null}
+			</div>
 
 			{images.length > 0 ? (
-				<TaskImageStrip
-					images={images}
-					onRemoveImage={handleRemoveImage}
-					className="mt-1.5"
-				/>
+				<TaskImageStrip images={images} onRemoveImage={handleRemoveImage} className="mt-1.5" />
 			) : null}
 
 			{onImagesChange && showAttachImageButton ? (

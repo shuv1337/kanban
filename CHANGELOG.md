@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.1.52]
+
+- Added support for custom OpenAI-compatible providers, so you can connect any OpenAI-compatible API as a Cline model provider
+- Added PWA support -- the web UI can now be installed as a standalone desktop app from Chrome, with window controls overlay and an offline fallback page that auto-reconnects when the server comes back
+- Sticky file headers in the diff viewer now pin under the toolbar while scrolling through large diffs
+- Show a cleanup spinner during Ctrl+C shutdown instead of silently hanging
+- Fixed Codex status monitoring to reliably track the latest tool call
+- Fixed terminal color detection for TUI apps like Codex CLI that query both foreground and background colors at startup
+- Fixed activity preview text getting truncated in hooks
+- Fixed project column sizing not persisting across sessions
+- Fixed home sidebar session IDs not matching the current format
+
+## [0.1.51]
+
+- Task terminals now support multiple simultaneous viewers, so opening the same task in several browser tabs no longer causes disconnections
+- Terminal TUI state is now preserved across reconnects, so you no longer lose your terminal view when the connection drops and re-establishes
+- Fixed Codex CLI content disappearing or rendering incorrectly -- PTY sessions are now fully server-side, so you can refresh the page, switch between tasks, and unmount terminals without losing any output
+- Fixed home sidebar terminal sessions not reconnecting after navigation
+- Switched to esbuild for faster builds
+- Claude agent hyperlinks now render correctly in Kanban terminals
+- Fixed screen flickering and unnecessary polling when viewing trashed tasks
+- Fixed restoring tasks from trash using the wrong agent
+- Fixed stale git worktree registrations that could cause worktree operations to fail
+
+## [0.1.50]
+
+- Updated Cline SDK from 0.0.21 to 0.0.22, which includes: fixed hook worker process launching to use a more robust internal launch mechanism
+
+## [0.1.49]
+
+- Updated Cline SDK from 0.0.16 to 0.0.21, which includes: organization fetching support, SDK declaration maps for better type resolution, OpenAI Compatible provider migration and cleanup of the legacy provider, agent telemetry events with agent ID and metadata, bash tool and home directory fixes on Windows, and exposed LoggerTelemetryAdapter in the node package
+
+## [0.1.48]
+
+- Fixed sidebar agent attempting to edit files and write code instead of staying focused on Kanban board management
+
+## [0.1.47]
+
+- Fixed browser open failing on Linux systems where `xdg-open` is not available
+
+## [0.1.46]
+
+- Added reasoning level dropdown to Cline provider settings and the model selector in the chat composer
+- Images can now be attached when creating tasks for Claude Code and Codec CLI agents -- images are saved as temporary files and their paths are passed into the prompt since TUIs don't support inline images
+- Added shortcuts for diff view actions and a "Start and Open" shortcut as an alternative to starting a task (shout out to Shey for the idea!)
+- Fixed issues with the sidebar Cline chat session not reloading after adding MCP servers
+- The project column can now be collapsed all the way to the edge for a minimal view (shout out to Shey for this idea!)
+- Fixed issues with some Next.js project configurations in worktrees
+- Fixed diff viewer showing false changes for end-of-file-only differences
+- Fixed a crash in older browsers when generating UUIDs for board state
+- Fixed a crash on Windows when resizing the terminal after the PTY process has exited
+
 ## [0.1.45]
 
 - Fixed kanban access validation to only apply restrictions to enterprise customers, so non-enterprise users are no longer incorrectly blocked

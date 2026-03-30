@@ -7,7 +7,7 @@ import {
 	KANBAN_RUNTIME_PORT_ENV,
 	KANBAN_RUNTIME_HOST_ENV,
 	parseHookRuntimeContextFromEnv,
-} from "../../../src/terminal/hook-runtime-context.js";
+} from "../../../src/terminal/hook-runtime-context";
 
 describe("hook-runtime-context", () => {
 	it("creates expected environment variables including runtime port and host", () => {

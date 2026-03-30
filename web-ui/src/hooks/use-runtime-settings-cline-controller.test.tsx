@@ -3,14 +3,16 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useRuntimeSettingsClineController } from "@/hooks/use-runtime-settings-cline-controller";
-import type { RuntimeConfigResponse } from "@/runtime/types";
+import type { RuntimeClineReasoningEffort, RuntimeConfigResponse } from "@/runtime/types";
 
 const fetchClineProviderCatalogMock = vi.hoisted(() => vi.fn());
 const fetchClineProviderModelsMock = vi.hoisted(() => vi.fn());
+const addClineProviderMock = vi.hoisted(() => vi.fn());
 const saveClineProviderSettingsMock = vi.hoisted(() => vi.fn());
 const runClineProviderOauthLoginMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/runtime/runtime-config-query", () => ({
+	addClineProvider: addClineProviderMock,
 	fetchClineProviderCatalog: fetchClineProviderCatalogMock,
 	fetchClineProviderModels: fetchClineProviderModelsMock,
 	saveClineProviderSettings: saveClineProviderSettingsMock,
@@ -22,8 +24,10 @@ interface HookSnapshot {
 	modelId: string;
 	apiKey: string;
 	baseUrl: string;
+	reasoningEffort: string;
 	providerCatalogIds: string[];
 	providerModelIds: string[];
+	selectedModelSupportsReasoningEffort: boolean;
 	isOauthProviderSelected: boolean;
 	apiKeyConfigured: boolean;
 	oauthConfigured: boolean;
@@ -33,11 +37,17 @@ interface HookSnapshot {
 	setModelId: (value: string) => void;
 	setApiKey: (value: string) => void;
 	setBaseUrl: (value: string) => void;
+	setReasoningEffort: (value: string) => void;
 	saveProviderSettings: () => Promise<{ ok: boolean; message?: string }>;
+	addCustomProvider: (
+		input: Parameters<ReturnType<typeof useRuntimeSettingsClineController>["addCustomProvider"]>[0],
+	) => Promise<{ ok: boolean; message?: string }>;
 	runOauthLogin: () => Promise<{ ok: boolean; message?: string }>;
 }
 
-function createRuntimeConfigResponse(clineOverrides: Partial<RuntimeConfigResponse["clineProviderSettings"]> = {}): RuntimeConfigResponse {
+function createRuntimeConfigResponse(
+	clineOverrides: Partial<RuntimeConfigResponse["clineProviderSettings"]> = {},
+): RuntimeConfigResponse {
 	return {
 		selectedAgentId: "cline",
 		selectedShortcutLabel: null,
@@ -63,6 +73,7 @@ function createRuntimeConfigResponse(clineOverrides: Partial<RuntimeConfigRespon
 			providerId: "cline",
 			modelId: "claude-sonnet-4-6",
 			baseUrl: null,
+			reasoningEffort: null,
 			apiKeyConfigured: false,
 			oauthProvider: "cline",
 			oauthAccessTokenConfigured: false,
@@ -121,8 +132,10 @@ function HookHarness({
 			modelId: state.modelId,
 			apiKey: state.apiKey,
 			baseUrl: state.baseUrl,
+			reasoningEffort: state.reasoningEffort,
 			providerCatalogIds: state.providerCatalog.map((provider) => provider.id),
 			providerModelIds: state.providerModels.map((model) => model.id),
+			selectedModelSupportsReasoningEffort: state.selectedModelSupportsReasoningEffort,
 			isOauthProviderSelected: state.isOauthProviderSelected,
 			apiKeyConfigured: state.apiKeyConfigured,
 			oauthConfigured: state.oauthConfigured,
@@ -140,7 +153,11 @@ function HookHarness({
 			setBaseUrl: (value) => {
 				state.setBaseUrl(value);
 			},
+			setReasoningEffort: (value) => {
+				state.setReasoningEffort(value as RuntimeClineReasoningEffort | "");
+			},
 			saveProviderSettings: state.saveProviderSettings,
+			addCustomProvider: state.addCustomProvider,
 			runOauthLogin: state.runOauthLogin,
 		});
 	}, [onSnapshot, state]);
@@ -156,6 +173,7 @@ describe("useRuntimeSettingsClineController", () => {
 	beforeEach(() => {
 		fetchClineProviderCatalogMock.mockReset();
 		fetchClineProviderModelsMock.mockReset();
+		addClineProviderMock.mockReset();
 		saveClineProviderSettingsMock.mockReset();
 		runClineProviderOauthLoginMock.mockReset();
 		fetchClineProviderCatalogMock.mockResolvedValue([]);
@@ -191,12 +209,14 @@ describe("useRuntimeSettingsClineController", () => {
 				oauthSupported: true,
 				enabled: true,
 				defaultModelId: "claude-sonnet-4-6",
+				baseUrl: "https://api.cline.bot/api/v1",
 			},
 		]);
 		fetchClineProviderModelsMock.mockResolvedValue([
 			{
 				id: "claude-sonnet-4-6",
 				name: "Claude Sonnet 4.6",
+				supportsReasoningEffort: false,
 			},
 		]);
 
@@ -223,6 +243,7 @@ describe("useRuntimeSettingsClineController", () => {
 		expect(fetchClineProviderModelsMock).toHaveBeenCalledWith("workspace-1", "cline");
 		expect(requireSnapshot(latestSnapshot).providerCatalogIds).toEqual(["cline"]);
 		expect(requireSnapshot(latestSnapshot).providerModelIds).toEqual(["claude-sonnet-4-6"]);
+		expect(requireSnapshot(latestSnapshot).selectedModelSupportsReasoningEffort).toBe(false);
 		expect(requireSnapshot(latestSnapshot).isOauthProviderSelected).toBe(true);
 		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
 	});
@@ -237,12 +258,14 @@ describe("useRuntimeSettingsClineController", () => {
 				oauthSupported: true,
 				enabled: true,
 				defaultModelId: "claude-sonnet-4-6",
+				baseUrl: "https://api.cline.bot/api/v1",
 			},
 		]);
 		fetchClineProviderModelsMock.mockResolvedValue([
 			{
 				id: "claude-sonnet-4-6",
 				name: "Claude Sonnet 4.6",
+				supportsReasoningEffort: false,
 			},
 		]);
 
@@ -281,6 +304,7 @@ describe("useRuntimeSettingsClineController", () => {
 				oauthSupported: true,
 				enabled: true,
 				defaultModelId: "claude-sonnet-4-6",
+				baseUrl: "https://api.cline.bot/api/v1",
 			},
 		]);
 
@@ -353,6 +377,7 @@ describe("useRuntimeSettingsClineController", () => {
 				oauthSupported: true,
 				enabled: true,
 				defaultModelId: "claude-sonnet-4-6",
+				baseUrl: "https://api.cline.bot/api/v1",
 			},
 		]);
 
@@ -379,6 +404,49 @@ describe("useRuntimeSettingsClineController", () => {
 		expect(requireSnapshot(latestSnapshot).modelId).toBe("claude-sonnet-4-6");
 	});
 
+	it("fills the provider base url from the catalog when the saved settings are blank", async () => {
+		const config = createRuntimeConfigResponse({
+			providerId: "openrouter",
+			oauthProvider: null,
+			modelId: "gpt-5",
+			baseUrl: null,
+		});
+		let latestSnapshot: HookSnapshot | null = null;
+		fetchClineProviderCatalogMock.mockResolvedValue([
+			{
+				id: "openrouter",
+				name: "OpenRouter",
+				oauthSupported: false,
+				enabled: true,
+				defaultModelId: "gpt-5",
+				baseUrl: "https://openrouter.ai/api/v1",
+			},
+		]);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId="workspace-1"
+					selectedAgentId="cline"
+					config={config}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			await flushAsyncWork();
+		});
+
+		expect(requireSnapshot(latestSnapshot).providerId).toBe("openrouter");
+		expect(requireSnapshot(latestSnapshot).baseUrl).toBe("https://openrouter.ai/api/v1");
+		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
+	});
+
 	it("saves the current provider draft and clears dirty state using the saved override", async () => {
 		const config = createRuntimeConfigResponse({
 			providerId: "anthropic",
@@ -391,6 +459,7 @@ describe("useRuntimeSettingsClineController", () => {
 			providerId: "openrouter",
 			modelId: "gpt-5",
 			baseUrl: "https://openrouter.ai/api",
+			reasoningEffort: "high",
 			apiKeyConfigured: true,
 			oauthProvider: null,
 			oauthAccessTokenConfigured: false,
@@ -419,6 +488,7 @@ describe("useRuntimeSettingsClineController", () => {
 			requireSnapshot(latestSnapshot).setModelId("gpt-5");
 			requireSnapshot(latestSnapshot).setBaseUrl("https://openrouter.ai/api");
 			requireSnapshot(latestSnapshot).setApiKey("secret-key");
+			requireSnapshot(latestSnapshot).setReasoningEffort("high");
 			await flushAsyncWork();
 		});
 
@@ -433,12 +503,127 @@ describe("useRuntimeSettingsClineController", () => {
 			modelId: "gpt-5",
 			apiKey: "secret-key",
 			baseUrl: "https://openrouter.ai/api",
+			reasoningEffort: "high",
 		});
 		expect(requireSnapshot(latestSnapshot).providerId).toBe("openrouter");
 		expect(requireSnapshot(latestSnapshot).modelId).toBe("gpt-5");
 		expect(requireSnapshot(latestSnapshot).baseUrl).toBe("https://openrouter.ai/api");
+		expect(requireSnapshot(latestSnapshot).reasoningEffort).toBe("high");
 		expect(requireSnapshot(latestSnapshot).apiKey).toBe("");
 		expect(requireSnapshot(latestSnapshot).apiKeyConfigured).toBe(true);
+		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
+	});
+
+	it("adds a custom provider and refreshes catalog and models", async () => {
+		const config = createRuntimeConfigResponse({
+			providerId: "cline",
+			modelId: "claude-sonnet-4-6",
+		});
+		let latestSnapshot: HookSnapshot | null = null;
+		fetchClineProviderCatalogMock
+			.mockResolvedValueOnce([
+				{
+					id: "cline",
+					name: "Cline",
+					oauthSupported: true,
+					enabled: true,
+					defaultModelId: "claude-sonnet-4-6",
+				},
+			])
+			.mockResolvedValueOnce([
+				{
+					id: "cline",
+					name: "Cline",
+					oauthSupported: true,
+					enabled: false,
+					defaultModelId: "claude-sonnet-4-6",
+				},
+				{
+					id: "my-provider",
+					name: "My Provider",
+					oauthSupported: false,
+					enabled: true,
+					defaultModelId: "qwen2.5-coder:32b",
+				},
+			]);
+		fetchClineProviderModelsMock
+			.mockResolvedValueOnce([
+				{
+					id: "claude-sonnet-4-6",
+					name: "Claude Sonnet 4.6",
+				},
+			])
+			.mockResolvedValue([
+				{
+					id: "qwen2.5-coder:32b",
+					name: "Qwen 2.5 Coder 32B",
+				},
+			]);
+		addClineProviderMock.mockResolvedValue({
+			providerId: "my-provider",
+			modelId: "qwen2.5-coder:32b",
+			baseUrl: "http://localhost:8000/v1",
+			reasoningEffort: null,
+			apiKeyConfigured: true,
+			oauthProvider: null,
+			oauthAccessTokenConfigured: false,
+			oauthRefreshTokenConfigured: false,
+			oauthAccountId: null,
+			oauthExpiresAt: null,
+		});
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId="workspace-1"
+					selectedAgentId="cline"
+					config={config}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			expect(
+				await requireSnapshot(latestSnapshot).addCustomProvider({
+					providerId: "my-provider",
+					name: "My Provider",
+					baseUrl: "http://localhost:8000/v1",
+					apiKey: "secret-key",
+					models: ["qwen2.5-coder:32b"],
+					defaultModelId: "qwen2.5-coder:32b",
+					modelsSourceUrl: null,
+					capabilities: ["tools", "streaming"],
+				}),
+			).toEqual({ ok: true });
+		});
+
+		expect(addClineProviderMock).toHaveBeenCalledWith("workspace-1", {
+			providerId: "my-provider",
+			name: "My Provider",
+			baseUrl: "http://localhost:8000/v1",
+			apiKey: "secret-key",
+			models: ["qwen2.5-coder:32b"],
+			defaultModelId: "qwen2.5-coder:32b",
+			modelsSourceUrl: null,
+			capabilities: ["tools", "streaming"],
+		});
+		expect(fetchClineProviderCatalogMock).toHaveBeenLastCalledWith("workspace-1");
+		expect(fetchClineProviderModelsMock).toHaveBeenLastCalledWith("workspace-1", "my-provider");
+		expect(requireSnapshot(latestSnapshot).providerId).toBe("my-provider");
+		expect(requireSnapshot(latestSnapshot).modelId).toBe("qwen2.5-coder:32b");
+		expect(requireSnapshot(latestSnapshot).baseUrl).toBe("http://localhost:8000/v1");
+		expect(requireSnapshot(latestSnapshot).apiKeyConfigured).toBe(true);
+		expect(requireSnapshot(latestSnapshot).providerCatalogIds).toEqual(["cline", "my-provider"]);
+		expect(requireSnapshot(latestSnapshot).providerModelIds).toEqual(["qwen2.5-coder:32b"]);
 		expect(requireSnapshot(latestSnapshot).hasUnsavedChanges).toBe(false);
 	});
 
@@ -458,6 +643,7 @@ describe("useRuntimeSettingsClineController", () => {
 				providerId: "cline",
 				modelId: "claude-sonnet-4-6",
 				baseUrl: null,
+				reasoningEffort: null,
 				apiKeyConfigured: false,
 				oauthProvider: "cline",
 				oauthAccessTokenConfigured: true,
@@ -511,6 +697,7 @@ describe("useRuntimeSettingsClineController", () => {
 				oauthSupported: true,
 				enabled: true,
 				defaultModelId: "claude-sonnet-4-6",
+				baseUrl: "https://api.cline.bot/api/v1",
 			},
 		]);
 		runClineProviderOauthLoginMock.mockResolvedValue({
@@ -520,6 +707,7 @@ describe("useRuntimeSettingsClineController", () => {
 				providerId: "cline",
 				modelId: null,
 				baseUrl: null,
+				reasoningEffort: null,
 				apiKeyConfigured: false,
 				oauthProvider: "cline",
 				oauthAccessTokenConfigured: true,
@@ -559,6 +747,53 @@ describe("useRuntimeSettingsClineController", () => {
 		expect(requireSnapshot(latestSnapshot).oauthConfigured).toBe(true);
 	});
 
+	it("shows reasoning effort support for GPT style models", async () => {
+		const config = createRuntimeConfigResponse({
+			providerId: "cline",
+			oauthProvider: "cline",
+			modelId: "openai/gpt-5.4",
+		});
+		let latestSnapshot: HookSnapshot | null = null;
+		fetchClineProviderCatalogMock.mockResolvedValue([
+			{
+				id: "cline",
+				name: "Cline",
+				oauthSupported: true,
+				enabled: true,
+				defaultModelId: "openai/gpt-5.4",
+				baseUrl: "https://api.cline.bot/api/v1",
+			},
+		]);
+		fetchClineProviderModelsMock.mockResolvedValue([
+			{
+				id: "openai/gpt-5.4",
+				name: "GPT-5.4",
+				supportsReasoningEffort: true,
+			},
+		]);
+
+		await act(async () => {
+			root.render(
+				<HookHarness
+					open={true}
+					workspaceId="workspace-1"
+					selectedAgentId="cline"
+					config={config}
+					onSnapshot={(snapshot) => {
+						latestSnapshot = snapshot;
+					}}
+				/>,
+			);
+			await flushAsyncWork();
+		});
+
+		await act(async () => {
+			await flushAsyncWork();
+		});
+
+		expect(requireSnapshot(latestSnapshot).selectedModelSupportsReasoningEffort).toBe(true);
+	});
+
 	it("clears base url when saving an OAuth provider", async () => {
 		const config = createRuntimeConfigResponse({
 			providerId: "openrouter",
@@ -571,6 +806,7 @@ describe("useRuntimeSettingsClineController", () => {
 			providerId: "cline",
 			modelId: "claude-sonnet-4-6",
 			baseUrl: null,
+			reasoningEffort: null,
 			apiKeyConfigured: false,
 			oauthProvider: "cline",
 			oauthAccessTokenConfigured: false,
@@ -608,6 +844,7 @@ describe("useRuntimeSettingsClineController", () => {
 			modelId: "gpt-5",
 			apiKey: null,
 			baseUrl: null,
+			reasoningEffort: null,
 		});
 		expect(requireSnapshot(latestSnapshot).baseUrl).toBe("");
 	});

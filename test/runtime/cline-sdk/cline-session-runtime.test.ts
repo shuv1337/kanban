@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createInMemoryClineSessionRuntime } from "../../../src/cline-sdk/cline-session-runtime.js";
+import { createInMemoryClineSessionRuntime } from "../../../src/cline-sdk/cline-session-runtime";
+import type { ClineSdkSessionRecord } from "../../../src/cline-sdk/sdk-runtime-boundary";
 
 function createNoopMcpRuntimeService() {
 	return {
@@ -25,6 +26,30 @@ function createDeferred<T>() {
 		promise,
 		resolve,
 		reject,
+	};
+}
+
+function createPersistedRecord(input: {
+	sessionId: string;
+	status: ClineSdkSessionRecord["status"];
+	startedAt: string;
+	updatedAt: string;
+}): ClineSdkSessionRecord {
+	return {
+		sessionId: input.sessionId,
+		source: "core" as ClineSdkSessionRecord["source"],
+		status: input.status,
+		startedAt: input.startedAt,
+		updatedAt: input.updatedAt,
+		interactive: true,
+		provider: "anthropic",
+		model: "claude-sonnet-4-6",
+		cwd: "/tmp/worktree",
+		workspaceRoot: "/tmp/workspace-root",
+		enableTools: true,
+		enableSpawn: false,
+		enableTeams: false,
+		isSubagent: false,
 	};
 }
 
@@ -314,7 +339,7 @@ describe("InMemoryClineSessionRuntime", () => {
 		});
 
 		await runtime.startTaskSession({
-			taskId: "__home_agent__:workspace-1:cline:abc123",
+			taskId: "__home_agent__:workspace-1:cline",
 			cwd: "/tmp/worktree",
 			prompt: "Investigate startup",
 			providerId: "anthropic",
@@ -324,7 +349,7 @@ describe("InMemoryClineSessionRuntime", () => {
 
 		expect(requestedSessionId).toBeTruthy();
 		expect(requestedSessionId ?? "").not.toMatch(/[<>:"/\\|?*]/);
-		expect(requestedSessionId ?? "").toMatch(/^__home_agent___workspace-1_cline_abc123-/);
+		expect(requestedSessionId ?? "").toMatch(/^__home_agent___workspace-1_cline-/);
 	});
 
 	it("clears the pending task binding when start fails", async () => {
@@ -427,24 +452,24 @@ describe("InMemoryClineSessionRuntime", () => {
 			dispose: vi.fn(async () => {}),
 			get: vi.fn(async () => undefined),
 			list: vi.fn(async () => [
-				{
+				createPersistedRecord({
 					sessionId: "task-1-older",
 					status: "completed",
 					startedAt: "2026-03-17T10:00:00.000Z",
 					updatedAt: "2026-03-17T10:05:00.000Z",
-				},
-				{
+				}),
+				createPersistedRecord({
 					sessionId: "task-1-newer",
 					status: "completed",
 					startedAt: "2026-03-17T10:10:00.000Z",
 					updatedAt: "2026-03-17T10:15:00.000Z",
-				},
-				{
+				}),
+				createPersistedRecord({
 					sessionId: "task-2-1",
 					status: "completed",
 					startedAt: "2026-03-17T09:00:00.000Z",
 					updatedAt: "2026-03-17T09:05:00.000Z",
-				},
+				}),
 			]),
 			readMessages: vi.fn(async () => [
 				{
@@ -484,12 +509,12 @@ describe("InMemoryClineSessionRuntime", () => {
 			dispose: vi.fn(async () => {}),
 			get: vi.fn(async () => undefined),
 			list: vi.fn(async () => [
-				{
+				createPersistedRecord({
 					sessionId: "task-1-newer",
 					status: "completed",
 					startedAt: "2026-03-17T10:10:00.000Z",
 					updatedAt: "2026-03-17T10:15:00.000Z",
-				},
+				}),
 			]),
 			readMessages: vi.fn(async () => [
 				{

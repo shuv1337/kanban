@@ -1,3 +1,4 @@
+import { isRuntimeAgentLaunchSupported } from "@runtime-agent-catalog";
 import type {
 	RuntimeAgentId,
 	RuntimeClineProviderSettings,
@@ -5,7 +6,6 @@ import type {
 	RuntimeStateStreamTaskChatMessage,
 	RuntimeTaskChatMessage,
 } from "@/runtime/types";
-import { isRuntimeAgentLaunchSupported } from "@runtime-agent-catalog";
 
 export function isNativeClineAgentSelected(agentId: RuntimeAgentId | null | undefined): boolean {
 	return agentId === "cline";
@@ -19,6 +19,7 @@ export function getRuntimeClineProviderSettings(
 			providerId: null,
 			modelId: null,
 			baseUrl: null,
+			reasoningEffort: null,
 			apiKeyConfigured: false,
 			oauthProvider: null,
 			oauthAccessTokenConfigured: false,
@@ -29,9 +30,7 @@ export function getRuntimeClineProviderSettings(
 	);
 }
 
-export function isClineProviderAuthenticated(
-	settings: RuntimeClineProviderSettings | null | undefined,
-): boolean {
+export function isClineProviderAuthenticated(settings: RuntimeClineProviderSettings | null | undefined): boolean {
 	if (!settings) {
 		return false;
 	}

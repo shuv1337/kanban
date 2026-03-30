@@ -1,22 +1,24 @@
 import { z } from "zod";
 
 import {
-	type RuntimeCommandRunRequest,
-	type RuntimeConfigSaveRequest,
+	type RuntimeClineAddProviderRequest,
 	type RuntimeClineMcpOAuthRequest,
 	type RuntimeClineMcpSettingsSaveRequest,
 	type RuntimeClineOauthLoginRequest,
 	type RuntimeClineProviderModelsRequest,
 	type RuntimeClineProviderSettingsSaveRequest,
-	type RuntimeTaskChatAbortRequest,
-	type RuntimeTaskChatCancelRequest,
-	type RuntimeTaskChatMessagesRequest,
-	type RuntimeTaskChatSendRequest,
+	type RuntimeCommandRunRequest,
+	type RuntimeConfigSaveRequest,
 	type RuntimeGitCheckoutRequest,
 	type RuntimeHookIngestRequest,
 	type RuntimeProjectAddRequest,
 	type RuntimeProjectRemoveRequest,
 	type RuntimeShellSessionStartRequest,
+	type RuntimeTaskChatAbortRequest,
+	type RuntimeTaskChatCancelRequest,
+	type RuntimeTaskChatMessagesRequest,
+	type RuntimeTaskChatReloadRequest,
+	type RuntimeTaskChatSendRequest,
 	type RuntimeTaskSessionInputRequest,
 	type RuntimeTaskSessionStartRequest,
 	type RuntimeTaskSessionStopRequest,
@@ -27,22 +29,24 @@ import {
 	type RuntimeWorkspaceStateSaveRequest,
 	type RuntimeWorktreeDeleteRequest,
 	type RuntimeWorktreeEnsureRequest,
-	runtimeCommandRunRequestSchema,
-	runtimeConfigSaveRequestSchema,
+	runtimeClineAddProviderRequestSchema,
 	runtimeClineMcpOAuthRequestSchema,
 	runtimeClineMcpSettingsSaveRequestSchema,
 	runtimeClineOauthLoginRequestSchema,
 	runtimeClineProviderModelsRequestSchema,
 	runtimeClineProviderSettingsSaveRequestSchema,
-	runtimeTaskChatAbortRequestSchema,
-	runtimeTaskChatCancelRequestSchema,
-	runtimeTaskChatMessagesRequestSchema,
-	runtimeTaskChatSendRequestSchema,
+	runtimeCommandRunRequestSchema,
+	runtimeConfigSaveRequestSchema,
 	runtimeGitCheckoutRequestSchema,
 	runtimeHookIngestRequestSchema,
 	runtimeProjectAddRequestSchema,
 	runtimeProjectRemoveRequestSchema,
 	runtimeShellSessionStartRequestSchema,
+	runtimeTaskChatAbortRequestSchema,
+	runtimeTaskChatCancelRequestSchema,
+	runtimeTaskChatMessagesRequestSchema,
+	runtimeTaskChatReloadRequestSchema,
+	runtimeTaskChatSendRequestSchema,
 	runtimeTaskSessionInputRequestSchema,
 	runtimeTaskSessionStartRequestSchema,
 	runtimeTaskSessionStopRequestSchema,
@@ -53,7 +57,7 @@ import {
 	runtimeWorkspaceStateSaveRequestSchema,
 	runtimeWorktreeDeleteRequestSchema,
 	runtimeWorktreeEnsureRequestSchema,
-} from "./api-contract.js";
+} from "./api-contract";
 
 const trimmedStringSchema = z.string().transform((value) => value.trim());
 const positiveIntegerFromQuerySchema = z.coerce.number().int().positive();
@@ -284,6 +288,17 @@ export function parseTaskChatAbortRequest(value: unknown): RuntimeTaskChatAbortR
 	};
 }
 
+export function parseTaskChatReloadRequest(value: unknown): RuntimeTaskChatReloadRequest {
+	const parsed = parseWithSchema(runtimeTaskChatReloadRequestSchema, value);
+	const taskId = parsed.taskId.trim();
+	if (!taskId) {
+		throw new Error("Task chat taskId cannot be empty.");
+	}
+	return {
+		taskId,
+	};
+}
+
 export function parseTaskChatCancelRequest(value: unknown): RuntimeTaskChatCancelRequest {
 	const parsed = parseWithSchema(runtimeTaskChatCancelRequestSchema, value);
 	const taskId = parsed.taskId.trim();
@@ -303,6 +318,47 @@ export function parseClineProviderModelsRequest(value: unknown): RuntimeClinePro
 	}
 	return {
 		providerId,
+	};
+}
+
+export function parseClineAddProviderRequest(value: unknown): RuntimeClineAddProviderRequest {
+	const parsed = parseWithSchema(runtimeClineAddProviderRequestSchema, value);
+	const providerId = parsed.providerId.trim().toLowerCase().replace(/\s+/g, "-");
+	if (!providerId) {
+		throw new Error("Provider ID cannot be empty.");
+	}
+	const name = parsed.name.trim();
+	if (!name) {
+		throw new Error("Provider name cannot be empty.");
+	}
+	const baseUrl = parsed.baseUrl.trim();
+	if (!baseUrl) {
+		throw new Error("Base URL cannot be empty.");
+	}
+	const models = [...new Set(parsed.models.map((model) => model.trim()).filter((model) => model.length > 0))];
+	const modelsSourceUrl = parsed.modelsSourceUrl?.trim() || null;
+	if (models.length === 0 && !modelsSourceUrl) {
+		throw new Error("Add at least one model or set a model source URL.");
+	}
+	const headers = parsed.headers
+		? Object.fromEntries(
+				Object.entries(parsed.headers)
+					.map(([key, entry]) => [key.trim(), entry.trim()] as const)
+					.filter(([key]) => key.length > 0),
+			)
+		: undefined;
+
+	return {
+		providerId,
+		name,
+		baseUrl,
+		apiKey: parsed.apiKey?.trim() || null,
+		...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
+		...(parsed.timeoutMs !== undefined ? { timeoutMs: parsed.timeoutMs } : {}),
+		models,
+		defaultModelId: parsed.defaultModelId?.trim() || null,
+		modelsSourceUrl,
+		capabilities: parsed.capabilities ? [...new Set(parsed.capabilities)] : undefined,
 	};
 }
 

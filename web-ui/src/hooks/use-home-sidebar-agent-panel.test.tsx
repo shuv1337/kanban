@@ -3,12 +3,9 @@ import { describe, expect, it } from "vitest";
 import { selectNewestTaskSessionSummary } from "@/hooks/home-sidebar-agent-panel-session-summary";
 import type { RuntimeTaskSessionSummary } from "@/runtime/types";
 
-function createSummary(
-	state: RuntimeTaskSessionSummary["state"],
-	updatedAt: number,
-): RuntimeTaskSessionSummary {
+function createSummary(state: RuntimeTaskSessionSummary["state"], updatedAt: number): RuntimeTaskSessionSummary {
 	return {
-		taskId: "__home_agent__:workspace:cline:nonce",
+		taskId: "__home_agent__:workspace:cline",
 		state,
 		agentId: "cline",
 		workspacePath: "/tmp/repo",

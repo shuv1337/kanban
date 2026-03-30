@@ -2,22 +2,28 @@ import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type { RuntimeAgentId, RuntimeHookEvent, RuntimeTaskSessionSummary } from "../core/api-contract.js";
-import { buildKanbanCommandParts } from "../core/kanban-command.js";
-import { quoteShellArg } from "../core/shell.js";
-import { lockedFileSystem } from "../fs/locked-file-system.js";
-import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt.js";
-import { getRuntimeHomePath } from "../state/workspace-state.js";
-import { writeStructuredRuntimeLog } from "../telemetry/runtime-log.js";
-import { buildPiTaskSessionDir } from "./pi-session-paths.js";
-import { createHookRuntimeEnv } from "./hook-runtime-context.js";
+import type {
+	RuntimeAgentId,
+	RuntimeHookEvent,
+	RuntimeTaskImage,
+	RuntimeTaskSessionSummary,
+} from "../core/api-contract";
+import { buildKanbanCommandParts } from "../core/kanban-command";
+import { quoteShellArg } from "../core/shell";
+import { lockedFileSystem } from "../fs/locked-file-system";
+import { resolveHomeAgentAppendSystemPrompt } from "../prompts/append-system-prompt";
+import { getRuntimeHomePath } from "../state/workspace-state";
+import { writeStructuredRuntimeLog } from "../telemetry/runtime-log";
+import { createHookRuntimeEnv } from "./hook-runtime-context";
+import { buildPiTaskSessionDir } from "./pi-session-paths";
 import {
 	getOpenCodeAuthPathCandidates,
 	getOpenCodeConfigPathCandidates,
 	getOpenCodeModelStatePathCandidates,
-} from "./opencode-paths.js";
-import { stripAnsi } from "./output-utils.js";
-import type { SessionTransitionEvent } from "./session-state-machine.js";
+} from "./opencode-paths";
+import { stripAnsi } from "./output-utils";
+import type { SessionTransitionEvent } from "./session-state-machine";
+import { prepareTaskPromptWithImages } from "./task-image-prompt";
 
 export interface AgentAdapterLaunchInput {
 	taskId: string;
@@ -27,6 +33,7 @@ export interface AgentAdapterLaunchInput {
 	autonomousModeEnabled?: boolean;
 	cwd: string;
 	prompt: string;
+	images?: RuntimeTaskImage[];
 	startInPlanMode?: boolean;
 	resumeFromTrash?: boolean;
 	env?: Record<string, string | undefined>;
@@ -829,7 +836,9 @@ export default function (pi: ExtensionAPI) {
 const claudeAdapter: AgentSessionAdapter = {
 	async prepare(input) {
 		const args = [...input.args];
-		const env: Record<string, string | undefined> = {};
+		const env: Record<string, string | undefined> = {
+			FORCE_HYPERLINK: "1",
+		};
 		const appendedSystemPrompt = resolveHomeAgentAppendSystemPrompt(input.taskId);
 		if (
 			input.autonomousModeEnabled &&
@@ -948,9 +957,7 @@ function codexPromptDetector(data: string, summary: RuntimeTaskSessionSummary): 
 function shouldInspectCodexOutputForTransition(summary: RuntimeTaskSessionSummary): boolean {
 	return (
 		summary.state === "awaiting_review" &&
-		(summary.reviewReason === "attention" ||
-			summary.reviewReason === "hook" ||
-			summary.reviewReason === "error")
+		(summary.reviewReason === "attention" || summary.reviewReason === "hook" || summary.reviewReason === "error")
 	);
 }
 
@@ -1640,5 +1647,12 @@ const ADAPTERS: Record<RuntimeAgentId, AgentSessionAdapter> = {
 };
 
 export async function prepareAgentLaunch(input: AgentAdapterLaunchInput): Promise<PreparedAgentLaunch> {
-	return ADAPTERS[input.agentId].prepare(input);
+	const preparedPrompt = await prepareTaskPromptWithImages({
+		prompt: input.prompt,
+		images: input.images,
+	});
+	return await ADAPTERS[input.agentId].prepare({
+		...input,
+		prompt: preparedPrompt,
+	});
 }

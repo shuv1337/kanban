@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { prepareAgentLaunch } from "../../../src/terminal/agent-session-adapters.js";
-import { buildPiTaskSessionDir, encodePathSegment } from "../../../src/terminal/pi-session-paths.js";
+import { prepareAgentLaunch } from "../../../src/terminal/agent-session-adapters";
+import { buildPiTaskSessionDir, encodePathSegment } from "../../../src/terminal/pi-session-paths";
 
 const originalHome = process.env.HOME;
 const originalAppData = process.env.APPDATA;
@@ -89,7 +89,7 @@ describe("prepareAgentLaunch hook strategies", () => {
 		setupTempHome();
 		setKanbanProcessContext();
 		const launch = await prepareAgentLaunch({
-			taskId: "__home_agent__:workspace-1:claude:abc123",
+			taskId: "__home_agent__:workspace-1:claude",
 			agentId: "claude",
 			binary: "claude",
 			args: [],
@@ -100,14 +100,16 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const appendPromptIndex = launch.args.indexOf("--append-system-prompt");
 		expect(appendPromptIndex).toBeGreaterThanOrEqual(0);
 		expect(launch.args[appendPromptIndex + 1]).toContain("Kanban sidebar agent");
-		expect(launch.args[appendPromptIndex + 1]).toContain("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create");
+		expect(launch.args[appendPromptIndex + 1]).toContain(
+			"'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create",
+		);
 	});
 
 	it("appends Kanban sidebar instructions for home Codex sessions", async () => {
 		setupTempHome();
 		setKanbanProcessContext();
 		const launch = await prepareAgentLaunch({
-			taskId: "__home_agent__:workspace-1:codex:abc123",
+			taskId: "__home_agent__:workspace-1:codex",
 			agentId: "codex",
 			binary: "codex",
 			args: [],
@@ -119,7 +121,9 @@ describe("prepareAgentLaunch hook strategies", () => {
 		expect(configArgIndex).toBeGreaterThanOrEqual(0);
 		expect(launch.args[configArgIndex + 1]).toContain("developer_instructions=");
 		expect(launch.args[configArgIndex + 1]).toContain("Kanban sidebar agent");
-		expect(launch.args[configArgIndex + 1]).toContain("'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create");
+		expect(launch.args[configArgIndex + 1]).toContain(
+			"'/usr/local/bin/node' '/Users/example/repo/dist/cli.js' task create",
+		);
 	});
 
 	it("writes Claude settings with explicit permission hook", async () => {
@@ -285,6 +289,36 @@ describe("prepareAgentLaunch hook strategies", () => {
 		const postToolInProgressHook = settings.hooks?.PostToolUse?.find((hook) => hook.matcher === "AskUser");
 		expect(postToolInProgressHook?.hooks?.[0]?.command).toContain("to_in_progress");
 		expect(settings.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command).toContain("to_in_progress");
+	});
+
+	it("materializes task images for CLI prompts", async () => {
+		setupTempHome();
+		const launch = await prepareAgentLaunch({
+			taskId: "task-images",
+			agentId: "codex",
+			binary: "codex",
+			args: [],
+			cwd: "/tmp",
+			prompt: "Inspect the attached design",
+			images: [
+				{
+					id: "img-1",
+					data: Buffer.from("hello").toString("base64"),
+					mimeType: "image/png",
+					name: "diagram.png",
+				},
+			],
+		});
+
+		const initialPrompt = launch.args.at(-1) ?? "";
+		expect(initialPrompt).toContain("Attached reference images:");
+		expect(initialPrompt).toContain("Task:\nInspect the attached design");
+
+		const imagePathMatch = initialPrompt.match(/1\. (.+?) \(diagram\.png\)/);
+		expect(imagePathMatch?.[1]).toBeDefined();
+		const imagePath = imagePathMatch?.[1] ?? "";
+		expect(existsSync(imagePath)).toBe(true);
+		expect(readFileSync(imagePath).toString("utf8")).toBe("hello");
 	});
 
 	it("writes Cline hook scripts and injects --hooks-dir", async () => {
