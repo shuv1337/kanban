@@ -4,14 +4,20 @@
 
 Implement Linear as the first external task source for Shuvban without replacing Shuvban’s existing execution model.
 
-The shipped behavior should let a user:
-- connect Shuvban to Linear
+The currently implemented behavior lets a user:
+- detect whether Linear is configured via `LINEAR_API_KEY`
 - browse/search Linear issues inside Shuvban
 - import a Linear issue into an existing Shuvban project backlog
 - run the imported task with the normal worktree + PTY agent flow
-- sync Shuvban execution state back to Linear using explicit status mappings
+- sync Shuvban execution state back to Linear using explicit or inferred status mappings
 - refresh imported issue metadata safely
 - see external issue metadata and sync state on cards and in task details
+
+Still pending:
+- UI support for creating Linear issues/sub-issues before import
+- direct import of newly created issues into a chosen backlog
+- broader routing/cross-project enhancements
+- the remaining automated + manual validation items listed later in this plan
 
 Shuvban remains the execution and review plane. Linear is added as an external issue source and status peer.
 
@@ -59,19 +65,25 @@ The implementation must preserve these existing runtime realities:
 
 Primary codebase touchpoints:
 - `src/core/api-contract.ts`
-- `src/state/workspace-state.ts`
-- `src/server/workspace-registry.ts`
+- `src/core/task-board-mutations.ts`
+- `src/integrations/config-store.ts`
+- `src/integrations/linear-client.ts`
+- `src/integrations/linear-types.ts`
+- `src/integrations/issue-import.ts`
+- `src/integrations/issue-sync.ts`
+- `src/integrations/status-mapper.ts`
+- `src/integrations/telemetry.ts`
+- `src/server/runtime-server.ts`
 - `src/trpc/app-router.ts`
-- `src/trpc/projects-api.ts`
-- `src/trpc/runtime-api.ts`
-- `src/trpc/workspace-api.ts`
-- `src/trpc/hooks-api.ts`
-- `src/terminal/session-manager.ts`
-- `src/terminal/agent-session-adapters.ts`
-- `src/workspace/task-worktree.ts`
+- `src/trpc/integrations-api.ts`
+- `web-ui/src/App.tsx`
+- `web-ui/src/runtime/integrations-query.ts`
+- `web-ui/src/runtime/types.ts`
+- `web-ui/src/state/board-state.ts`
 - `web-ui/src/types/board.ts`
-- `web-ui/src/hooks/use-workspace-sync.ts`
 - `web-ui/src/components/project-navigation-panel.tsx`
+- `web-ui/src/components/task-create-dialog.tsx`
+- `web-ui/src/components/board-card.tsx`
 - `web-ui/src/components/card-detail-view.tsx`
 
 ---
@@ -123,7 +135,14 @@ web-ui/src/components/integrations/
 
 web-ui/src/hooks/
 ├── use-linear-issues.ts
-└── use-import-linear-issue.ts
+├── use-import-linear-issue.ts
+├── use-linear-integration-status.ts
+├── use-imported-issue-actions.ts
+├── use-imported-issue-refresh.ts
+└── use-imported-issue-sync.ts
+
+web-ui/src/runtime/
+└── integrations-query.ts
 ```
 
 Extend existing surfaces instead of creating a parallel task UI.
@@ -149,6 +168,12 @@ externalSource?: {
   parentIssueId: string | null;
   lastRemoteUpdatedAt: number | null;
   lastSyncedAt: number | null;
+  remoteState?: {
+    id: string;
+    name: string;
+    type: string;
+  } | null;
+  labelNames?: string[];
 };
 externalSync?: {
   status: "idle" | "syncing" | "error";
@@ -193,9 +218,10 @@ Rules:
 
 Do not use `src/config/runtime-config.ts`.
 
-Store integration config under the Shuvban runtime home, using either:
-- `~/.shuvban/integrations.json`, or
-- `~/.shuvban/integrations/linear.json`
+Store integration config under the Shuvban runtime home at:
+- `~/.shuvban/integrations.json`
+
+The implementation also ensures `~/.shuvban/integrations/` exists for future provider-specific files, but the current source of truth is the single JSON file above.
 
 Persist only non-secret integration settings, such as:
 - default team ID
@@ -214,6 +240,7 @@ UI requirements:
 - clear configured/unconfigured state
 - clear missing-env guidance
 - no misleading implication that secrets are stored in runtime config
+- no in-app credential entry flow in this phase; the current UI is status/import only
 
 ---
 
@@ -252,10 +279,10 @@ Local board columns remain:
 - `trash`
 
 Required mapping behavior:
-- `backlog` → configured Linear backlog/todo state
-- `in_progress` → configured in-progress state
-- `review` → configured in-review state
-- `review -> trash` → configured done state
+- `backlog` → configured Linear backlog/todo state, or an inferred fallback state by type/name
+- `in_progress` → configured in-progress state, or an inferred fallback state by type/name
+- `review` → configured in-review state, or an inferred fallback state by type/name
+- `review -> trash` → configured done state, or an inferred fallback completed state
 
 ## 2. Trash safety rule
 
@@ -299,11 +326,11 @@ If an imported card has an active local session:
 
 ## Phase 0 — schema and foundations
 
-- [ ] Extend `RuntimeBoardCard` in `src/core/api-contract.ts` with `externalSource` and `externalSync`
-- [ ] Update browser/runtime board types to match
-- [ ] Ensure workspace-state load/save remains backward-compatible
-- [ ] Add normalized integration DTOs and schemas in `src/integrations/linear-types.ts`
-- [ ] Add integration telemetry helpers in `src/integrations/telemetry.ts`
+- [x] Extend `RuntimeBoardCard` in `src/core/api-contract.ts` with `externalSource` and `externalSync`
+- [x] Update browser/runtime board types to match
+- [x] Ensure workspace-state load/save remains backward-compatible
+- [x] Add normalized integration DTOs and schemas in `src/integrations/linear-types.ts`
+- [x] Add integration telemetry helpers in `src/integrations/telemetry.ts`
 
 Exit criteria:
 - existing boards still load
@@ -312,12 +339,12 @@ Exit criteria:
 
 ## Phase 1 — Linear client and config
 
-- [ ] Add `@linear/sdk`
-- [ ] Implement `src/integrations/config-store.ts`
-- [ ] Implement `src/integrations/linear-client.ts`
-- [ ] Read `LINEAR_API_KEY` from env in the integration layer only
-- [ ] Add integration status resolution for configured/unconfigured UI states
-- [ ] Instrument all Linear client requests with structured logs/spans
+- [x] Add `@linear/sdk`
+- [x] Implement `src/integrations/config-store.ts`
+- [x] Implement `src/integrations/linear-client.ts`
+- [x] Read `LINEAR_API_KEY` from env in the integration layer only
+- [x] Add integration status resolution for configured/unconfigured UI states
+- [x] Instrument all Linear client requests with structured logs/spans
 
 Exit criteria:
 - runtime can determine whether Linear is configured
@@ -326,11 +353,11 @@ Exit criteria:
 
 ## Phase 2 — issue import
 
-- [ ] Implement `src/integrations/issue-import.ts`
-- [ ] Add tRPC endpoints for issue search/details/import
-- [ ] Convert imported Linear issues into normal Shuvban backlog cards
-- [ ] Persist external metadata on imported cards
-- [ ] Ensure imported cards behave exactly like existing local cards in session/worktree flows
+- [x] Implement `src/integrations/issue-import.ts`
+- [x] Add tRPC endpoints for issue search/details/import
+- [x] Convert imported Linear issues into normal Shuvban backlog cards
+- [x] Persist external metadata on imported cards
+- [x] Ensure imported cards behave exactly like existing local cards in session/worktree flows
 
 Exit criteria:
 - user can search Linear and import an issue into any existing project backlog
@@ -339,12 +366,12 @@ Exit criteria:
 
 ## Phase 3 — UI integration
 
-- [ ] Build `linear-connect-panel.tsx`
-- [ ] Build `linear-issue-picker-dialog.tsx`
-- [ ] Build `external-issue-badge.tsx`
-- [ ] Add an “Import from Linear” entry point near task creation
-- [ ] Extend `card-detail-view.tsx` with external source metadata and manual refresh/sync actions
-- [ ] Show sync state and last error in card/detail UI
+- [x] Build `linear-connect-panel.tsx`
+- [x] Build `linear-issue-picker-dialog.tsx`
+- [x] Build `external-issue-badge.tsx`
+- [x] Add an “Import from Linear” entry point near task creation
+- [x] Extend `card-detail-view.tsx` with external source metadata and manual refresh/sync actions
+- [x] Show sync state and last error in card/detail UI
 
 Exit criteria:
 - user can discover connection state
@@ -353,13 +380,13 @@ Exit criteria:
 
 ## Phase 4 — local-to-remote status sync
 
-- [ ] Implement `src/integrations/status-mapper.ts`
-- [ ] Implement `src/integrations/issue-sync.ts` for local→remote transitions
-- [ ] Sync imported cards on entry to `in_progress`
-- [ ] Sync imported cards on entry to `review`
-- [ ] Sync only `review -> trash` to Done
-- [ ] Surface sync failures in persisted card sync state and detail UI
-- [ ] Ensure sync attempts do not block core local board behavior
+- [x] Implement `src/integrations/status-mapper.ts`
+- [x] Implement `src/integrations/issue-sync.ts` for local→remote transitions
+- [x] Sync imported cards on entry to `in_progress`
+- [x] Sync imported cards on entry to `review`
+- [x] Sync only `review -> trash` to Done
+- [x] Surface sync failures in persisted card sync state and detail UI
+- [x] Ensure sync attempts do not block core local board behavior
 
 Exit criteria:
 - imported cards update Linear predictably
@@ -368,11 +395,11 @@ Exit criteria:
 
 ## Phase 5 — remote refresh and conflict handling
 
-- [ ] Add manual refresh for imported issues
-- [ ] Add background metadata refresh for imported cards only
-- [ ] Detect and surface conflicts when remote changes arrive during active local execution
-- [ ] Preserve local execution state when refresh conflicts occur
-- [ ] Log conflict detection and refresh outcomes with correlation fields
+- [x] Add manual refresh for imported issues
+- [x] Add background metadata refresh for imported cards only
+- [x] Detect and surface conflicts when remote changes arrive during active local execution
+- [x] Preserve local execution state when refresh conflicts occur
+- [x] Log conflict detection and refresh outcomes with correlation fields
 
 Exit criteria:
 - imported cards can refresh remote metadata safely
@@ -381,14 +408,15 @@ Exit criteria:
 
 ## Phase 6 — issue creation support
 
-- [ ] Add `createLinearIssue`
-- [ ] Add `createLinearSubIssue`
+- [x] Add backend `createLinearIssue`
+- [x] Add backend `createLinearSubIssue`
 - [ ] Allow newly created issues to be imported directly into a chosen project backlog
-- [ ] Preserve parent/sub-issue linkage in persisted card metadata
+- [ ] Preserve parent/sub-issue linkage in persisted card metadata for create flows
 - [ ] Extend task creation flows to optionally create in Linear first
+- [ ] Add frontend/runtime query helpers that actually call the create endpoints
 
 Exit criteria:
-- Shuvban can both consume and originate Linear work
+- Shuvban can both consume and originate Linear work from the shipped product surface, not just backend APIs
 - created/imported relationships persist correctly
 
 ## Phase 7 — routing and cross-project enhancements
@@ -412,6 +440,13 @@ Imported Linear cards must:
 - show sync state and sync errors in the detail surface
 - preserve all existing task actions unless explicitly restricted by integration rules
 
+Current frontend behavior:
+- project navigation shows a `Linear` status panel with configured/unconfigured messaging
+- import can be launched from project navigation and from the single-task create dialog
+- imported cards show `ExternalIssueBadge` in board cards and task details
+- task details expose manual `Refresh` and `Sync` actions
+- app-level hooks perform best-effort background refresh and column-transition-triggered sync for imported cards
+
 The import flow must:
 - operate within the existing selected project/workspace model
 - import into backlog by default
@@ -423,7 +458,7 @@ The import flow must:
 
 Telemetry is mandatory in the same change set as the feature.
 
-Required event families:
+Implemented event families:
 - `integration.linear.request.start`
 - `integration.linear.request.complete`
 - `integration.linear.request.error`
@@ -444,30 +479,32 @@ Required fields wherever available:
 - `errorName`
 - `agentId` when a running session is involved
 
-Implementation path:
-- use `src/telemetry/runtime-log.ts`
-- use `src/telemetry/hook-telemetry.ts` where relevant
-- use `src/telemetry/sentry-node.ts` for error capture as appropriate
-- wrap provider calls and sync flows with latency/error instrumentation
+Implementation path currently in code:
+- `src/integrations/telemetry.ts` wraps integration operations
+- `src/telemetry/runtime-log.ts` is used for structured log emission
+- `src/telemetry/sentry-node.ts` is used for error capture
+- provider calls and sync flows are latency/error instrumented via logs; explicit tracing spans are not implemented yet in this work
 
 ---
 
 ## Validation plan
 
 Run for every phase:
-- [ ] `npm run typecheck`
-- [ ] `npm run test`
-- [ ] `npm run web:test`
+- [x] `npm run typecheck`
+- [x] `npm run test`
+- [x] `npm run web:test`
 
 Required automated coverage:
-- [ ] schema compatibility tests for `RuntimeBoardCard`
+- [x] import formatting + external metadata persistence tests (`test/runtime/linear-integration.test.ts`)
+- [x] status mapping tests (`test/runtime/linear-integration.test.ts`)
+- [x] `integrations-api` tests (`test/runtime/trpc/integrations-api.test.ts`)
+- [x] browser board type tests for external issue metadata (`web-ui/src/types/board.test.ts`)
+- [x] UI test for import dialog flow (`web-ui/src/components/integrations/linear-issue-picker-dialog.test.tsx`)
+- [x] UI test for source badge rendering (`web-ui/src/components/external-issue-badge.test.tsx`)
 - [ ] integration config-store tests
 - [ ] Linear client tests with mocked SDK responses
-- [ ] `integrations-api` tests
-- [ ] import formatting tests
-- [ ] status mapping tests
 - [ ] sync conflict tests
-- [ ] UI tests for import flow, source badge rendering, and detail metadata rendering
+- [ ] card-detail metadata rendering tests
 
 Required manual validation scenarios:
 - [ ] import a Linear issue into project A backlog
@@ -502,12 +539,13 @@ Rules for sequencing:
 ## Shipping criteria
 
 This plan is complete when all of the following are true:
-- a user can connect Shuvban to Linear via env-backed configuration
+- a user can enable Linear via env-backed configuration and see accurate configured/unconfigured UI state
 - a user can search and import a Linear issue into an existing project backlog
 - imported issues behave like standard Shuvban tasks during execution
 - imported issue metadata is persisted and rendered in the UI
 - Linear status sync works for `backlog`, `in_progress`, `review`, and `review -> trash`
 - unsafe non-review trash transitions do not mark remote issues done
 - refresh and conflict handling are visible and safe
+- issue creation/sub-issue creation are wired through to shipped UI flows, not just backend APIs
 - telemetry exists for all request/import/sync/conflict paths
 - required automated coverage and manual validation scenarios pass
