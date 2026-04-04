@@ -27,7 +27,7 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader } from "@/components/ui/
 import { LocalStorageKey } from "@/storage/local-storage-store";
 import type { TaskAutoReviewMode, TaskImage } from "@/types";
 import { isMacPlatform, pasteShortcutLabel } from "@/utils/platform";
-import { useRawLocalStorageValue } from "@/utils/react-use";
+import { useBooleanLocalStorageValue, useRawLocalStorageValue } from "@/utils/react-use";
 
 const AUTO_REVIEW_MODE_OPTIONS: Array<{ value: TaskAutoReviewMode; label: string }> = [
 	{ value: "commit", label: "Make commit" },
@@ -153,6 +153,10 @@ export function TaskCreateDialog({
 		LocalStorageKey.TaskCreatePrimaryStartAction,
 		DEFAULT_PRIMARY_START_ACTION,
 		normalizeStoredTaskCreateStartAction,
+	);
+	const [isImagePasteEnabled, setIsImagePasteEnabled] = useBooleanLocalStorageValue(
+		LocalStorageKey.TaskImagePasteEnabled,
+		false,
 	);
 	const [isLinearPickerOpen, setIsLinearPickerOpen] = useState(false);
 
@@ -404,16 +408,39 @@ export function TaskCreateDialog({
 							autoFocus
 							workspaceId={workspaceId}
 							showAttachImageButton={false}
+							allowPasteImages={isImagePasteEnabled}
 						/>
-						<div className="flex items-center justify-between mt-1.5">
-							<p className="text-[11px] text-text-tertiary">
-								Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to
-								reference files. Drag and drop or{" "}
-								<code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">
-									{pasteShortcutLabel}
-								</code>{" "}
-								to add images.
-							</p>
+						<div className="mt-1.5 flex items-start justify-between gap-3">
+							<div className="min-w-0 flex-1">
+								<p className="text-[11px] text-text-tertiary">
+									Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to
+									reference files. Drag and drop images.{" "}
+									{isImagePasteEnabled ? (
+										<>
+											Clipboard image paste is enabled via{" "}
+											<code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">
+												{pasteShortcutLabel}
+											</code>
+											.
+										</>
+									) : (
+										<>Text paste stays normal while image paste is off.</>
+									)}
+								</p>
+								{/* biome-ignore lint/a11y/noLabelWithoutControl: Radix Checkbox renders a button, not a native input */}
+								<label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-[12px] text-text-primary select-none">
+									<RadixCheckbox.Root
+										checked={isImagePasteEnabled}
+										onCheckedChange={(checked) => setIsImagePasteEnabled(checked === true)}
+										className="flex h-3.5 w-3.5 cursor-pointer items-center justify-center rounded-sm border border-border-bright bg-surface-3 data-[state=checked]:bg-accent data-[state=checked]:border-accent"
+									>
+										<RadixCheckbox.Indicator>
+											<Check size={10} className="text-white" />
+										</RadixCheckbox.Indicator>
+									</RadixCheckbox.Root>
+									<span>Enable image paste with {pasteShortcutLabel}</span>
+								</label>
+							</div>
 							{detectedItems.length >= 2 ? (
 								<button
 									type="button"

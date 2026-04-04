@@ -7,7 +7,6 @@ import { BranchSelectDropdown, type BranchSelectOption } from "@/components/bran
 import { TaskPromptComposer } from "@/components/task-prompt-composer";
 import { Button } from "@/components/ui/button";
 import type { TaskAutoReviewMode, TaskImage } from "@/types";
-import { pasteShortcutLabel } from "@/utils/platform";
 import { useDocumentEvent, useMeasure } from "@/utils/react-use";
 
 export type TaskInlineCardMode = "create" | "edit";
@@ -169,12 +168,11 @@ export function TaskInlineCreateCard({
 					autoFocus
 					workspaceId={workspaceId}
 					showAttachImageButton={false}
+					allowPasteImages={false}
 				/>
 				<p className="text-[11px] text-text-tertiary mt-1 mb-0">
 					Use <code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">@file</code> to reference
-					files. Drag and drop or{" "}
-					<code className="rounded bg-surface-3 px-1 py-px font-mono text-[11px]">{pasteShortcutLabel}</code> to
-					add images.
+					files. Drag and drop images to attach them.
 				</p>
 			</div>
 

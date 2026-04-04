@@ -3,6 +3,7 @@ export enum LocalStorageKey {
 	TaskAutoReviewEnabled = "shuvban.task-auto-review-enabled",
 	TaskAutoReviewMode = "shuvban.task-auto-review-mode",
 	TaskCreatePrimaryStartAction = "shuvban.task-create-primary-start-action",
+	TaskImagePasteEnabled = "shuvban.task-image-paste-enabled",
 	BottomTerminalPaneHeight = "shuvban.bottom-terminal-pane-height",
 	ProjectNavigationPanelWidth = "kb-sidebar-width",
 	ProjectNavigationPanelCollapsed = "shuvban.project-navigation-panel-collapsed",

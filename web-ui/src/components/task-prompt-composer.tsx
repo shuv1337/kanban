@@ -30,6 +30,7 @@ interface TaskPromptComposerProps {
 	autoFocus?: boolean;
 	workspaceId?: string | null;
 	showAttachImageButton?: boolean;
+	allowPasteImages?: boolean;
 }
 
 export function TaskPromptComposer({
@@ -47,6 +48,7 @@ export function TaskPromptComposer({
 	autoFocus = false,
 	workspaceId: _workspaceId = null,
 	showAttachImageButton = true,
+	allowPasteImages = true,
 }: TaskPromptComposerProps): ReactElement {
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -113,7 +115,11 @@ export function TaskPromptComposer({
 
 	const handlePaste = useCallback(
 		(event: ClipboardEvent<HTMLTextAreaElement>) => {
-			if (!enabled || disabled || !onImagesChange) {
+			if (!enabled || disabled || !onImagesChange || !allowPasteImages) {
+				return;
+			}
+			const imageFiles = collectImageFilesFromDataTransfer(event.clipboardData);
+			if (imageFiles.length === 0) {
 				return;
 			}
 			event.preventDefault();
@@ -125,7 +131,7 @@ export function TaskPromptComposer({
 				appendImages(pastedImages);
 			})();
 		},
-		[appendImages, disabled, enabled, onImagesChange],
+		[allowPasteImages, appendImages, disabled, enabled, onImagesChange],
 	);
 
 	const handleDrop = useCallback(
